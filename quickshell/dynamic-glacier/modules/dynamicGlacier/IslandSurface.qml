@@ -1,0 +1,1231 @@
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Shapes
+
+Item {
+    id: root
+
+    property string mode: "idle"
+    property string appName: ""
+    property string title: ""
+    property string body: ""
+    property string artist: ""
+    property string artUrl: ""
+    property int volume: 0
+    property bool muted: false
+    property string volumeKind: "audio"
+    property bool playing: false
+    property bool canGoPrevious: false
+    property bool canTogglePlaying: false
+    property bool canGoNext: false
+    property bool canSeek: false
+    property bool shuffleActive: false
+    property bool shuffleSupported: false
+    property string loopStateText: "OFF"
+    property bool loopActive: false
+    property bool loopSupported: false
+    property real mediaPosition: 0
+    property real mediaLength: 0
+    property bool forceExpanded: false
+    property bool mediaAvailable: false
+    property string handleStyle: "bump"
+    property bool liquidGlassEnabled: false
+    property int idleWidth: 340
+    property int idleHeight: 132
+    property string batteryHoverText: ""
+    property bool batteryCharging: false
+    property int batteryLevel: 0
+    property bool wifiConnected: false
+    property string wifiSsid: ""
+    property int wifiSignal: 0
+    property bool btEnabled: false
+    property bool btConnected: false
+    property string btDeviceName: ""
+    property int btBattery: -1
+    property string timeText: ""
+    property string dateText: ""
+    property int workspaceIndicatorId: 0
+    property int workspaceIndicatorCount: 4
+    property string fontFamily: "Noto Sans"
+    property var fontOptions: []
+
+    // Geometry the shell asks for. The surface owns the actual width/height so the
+    // morph between shapes can be expressed as States + Transitions.
+    property real targetW: 0
+    property real targetH: 0
+    property int wifiMaxPanelHeight: 420
+    property int btMaxPanelHeight: 420
+    property int appsMaxPanelHeight: 470
+
+    // 0 = island, 1 = Wi-Fi manager. Animated by the morph transition and shared
+    // with the content layer so shape and contents move as one.
+    property real wifiMorph: 0
+    readonly property real wifiPanelHeight: islandContent.wifiContentHeight
+
+    property real btMorph: 0
+    readonly property real btPanelHeight: islandContent.btContentHeight
+
+    property real batteryMorph: 0
+    readonly property real batteryPanelHeight: islandContent.batteryContentHeight
+
+    property real settingsMorph: 0
+    readonly property real settingsPanelHeight: islandContent.settingsContentHeight
+
+    // Same idea for the favorites dock. Only one of the two morphs is ever
+    // non-zero, since the island can only be in one panel mode at a time.
+    property real appsMorph: 0
+    readonly property real appsPanelHeight: islandContent.appsContentHeight
+
+    property real wallpaperMorph: 0
+    readonly property real wallpaperPanelHeight: islandContent.wallpaperContentHeight
+
+    property real calcMorph: 0
+    readonly property real calcPanelHeight: islandContent.calcContentHeight
+
+    property real powerMorph: 0
+    readonly property real powerPanelHeight: islandContent.powerContentHeight
+
+    property real clipboardMorph: 0
+    readonly property real clipboardPanelHeight: islandContent.clipboardContentHeight
+
+    // 0 = island, 1 = volume HUD. Same mechanism as the two panels above, so the
+    // pill grows out of the handle instead of being painted on top of it.
+    property real volumeMorph: 0
+
+    readonly property bool expanded: mode !== "idle" || forceExpanded
+    readonly property bool liquidGlassActive: root.liquidGlassEnabled
+    // The volume pill rounds all the way to a capsule as it morphs in; every other
+    // expanded shape keeps the softer island corner.
+    readonly property real expandedBottomRadius: {
+        const islandRadius = Math.min(height * 0.28, 24);
+
+        return islandRadius + (height / 2 - islandRadius) * root.volumeMorph;
+    }
+    readonly property real bottomRadius: Math.max(1, Math.min(height / 2, expanded ? expandedBottomRadius : Math.min(height * 0.42, 8)))
+    readonly property color surfaceColor: root.liquidGlassActive ? "#d9070708" : (!expanded && handleStyle === "strip" ? "#0c0c0c" : "#000000")
+    readonly property real antiCornerRadius: root.expanded || handleStyle === "strip" ? Math.min(3, height * 0.6) : Math.min(2.5, height * 0.12)
+
+    property bool wifiRadioEnabled: true
+    property var wifiNetworks: []
+    property string wifiExpandedSsid: ""
+    property string wifiPasswordDraft: ""
+    property string wifiStatusText: ""
+    property bool wifiConnecting: false
+
+    property bool btDiscovering: false
+    property var btDevices: []
+    property string btStatusText: ""
+
+    property bool batteryAvailable: false
+    property real batteryHealth: -1
+    property int batteryCycles: -1
+    property real batteryFullCapacityWh: -1
+    property real batteryDesignCapacityWh: -1
+    property real batteryVoltage: -1
+    property real batteryPower: -1
+    property string batteryStatus: ""
+    property string batteryModel: ""
+    property bool batteryThresholdSupported: false
+    property bool batteryThresholdEnabled: false
+    property bool batteryThresholdBusy: false
+    property int batteryThresholdStart: -1
+    property int batteryThresholdEnd: -1
+    property string batteryThresholdStatusText: ""
+    property bool powerProfilesAvailable: false
+    property var availablePowerProfiles: []
+    property string activePowerProfile: ""
+    property bool powerProfileBusy: false
+    property string powerProfileStatusText: ""
+    property string performanceDegraded: ""
+    property string performanceInhibited: ""
+
+    property var favoriteAppEntries: []
+    property var favoriteAppIds: []
+    property var appsPickerEntries: []
+    property bool appsPickerOpen: false
+    property string appsSearchDraft: ""
+    property string appsStatusText: ""
+    property int appsFavoriteSlots: 8
+    property int appsFavoriteHighlightIndex: 0
+    property int appsPickerHighlightIndex: 0
+
+    property var wallpaperEntries: []
+    property string currentWallpaperPath: ""
+    property string wallpaperStatusText: ""
+    property bool wallpaperApplying: false
+    property int wallpaperHighlightIndex: 0
+
+    property var clipboardEntries: []
+    property int clipboardHighlightIndex: 0
+    property string clipboardStatusText: ""
+
+    signal previousRequested
+    signal playPauseRequested
+    signal nextRequested
+    signal shuffleRequested
+    signal loopRequested
+    signal favoriteRequested
+    signal dismissRequested
+    signal wifiSettingsRequested
+    signal wifiCloseRequested
+    signal wifiToggleRadioRequested
+    signal wifiRowRequested(string ssid)
+    signal wifiConnectRequested(string ssid, bool secured)
+    signal wifiDisconnectRequested(string ssid)
+    signal wifiPasswordChanged(string text)
+    signal btCloseRequested
+    signal btToggleRadioRequested
+    signal btRefreshRequested
+    signal btDeviceRequested(var device)
+    signal batteryRequested
+    signal batteryCloseRequested
+    signal batteryToggleThresholdRequested
+    signal powerProfileRequested(string profile)
+    signal glacierSettingsRequested
+    signal settingsCloseRequested
+    signal liquidGlassRequested(bool enabled)
+    signal fontFamilyRequested(string family)
+    signal idleWidthRequested(int width)
+    signal idleHeightRequested(int height)
+    signal settingsResetRequested
+    signal appsSettingsRequested
+    signal appsCloseRequested
+    signal appsPickerToggleRequested
+    signal appsSearchChanged(string text)
+    signal appsSearchAccepted
+    signal appsPickerNavRequested(int delta)
+    signal appsFavoriteNavRequested(int dx, int dy)
+    signal appsFavoriteActivateRequested
+    signal appsFavoriteToggleRequested(string id)
+    signal appsLaunchRequested(string id)
+    signal wallpaperCloseRequested
+    signal wallpaperRefreshRequested
+    signal wallpaperApplyRequested(string path)
+    signal wallpaperHighlightNavRequested(int dx, int dy)
+    signal wallpaperActivateRequested
+    signal calcCloseRequested
+    signal powerCloseRequested
+    signal powerActionRequested(string action)
+    signal clipboardCloseRequested
+    signal clipboardRefreshRequested
+    signal clipboardClearRequested
+    signal clipboardApplyRequested(string raw)
+    signal clipboardDeleteRequested(string raw)
+    signal clipboardHighlightNavRequested(int delta)
+    signal clipboardActivateRequested
+    signal btSettingsRequested
+    signal seekRequested(real position)
+    signal handleStyleRequested(string style)
+
+    transformOrigin: Item.Top
+
+    // Anti-corner left: smooth concave curve merging island into screen edge
+    Shape {
+        id: antiCornerLeft
+
+        x: -antiCornerLeft.width
+        y: 0
+        width: root.antiCornerRadius
+        height: root.antiCornerRadius * 0.65
+        opacity: root.antiCornerRadius > 0 ? 1 : 0
+        visible: opacity > 0
+        antialiasing: true
+
+        ShapePath {
+            fillColor: root.surfaceColor
+            strokeColor: "transparent"
+            startX: antiCornerLeft.width
+            startY: 0
+            PathLine {
+                x: antiCornerLeft.width
+                y: antiCornerLeft.height
+            }
+            PathCubic {
+                x: 0; y: 0
+                control1X: antiCornerLeft.width * 0.45
+                control1Y: antiCornerLeft.height
+                control2X: 0
+                control2Y: antiCornerLeft.height * 0.3
+            }
+        }
+
+        Behavior on opacity {
+            NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
+        }
+        Behavior on width {
+            NumberAnimation { duration: 360; easing.type: Easing.OutCubic }
+        }
+        Behavior on height {
+            NumberAnimation { duration: 360; easing.type: Easing.OutCubic }
+        }
+    }
+
+    // Anti-corner right: smooth concave curve merging island into screen edge
+    Shape {
+        id: antiCornerRight
+
+        x: root.width
+        y: 0
+        width: root.antiCornerRadius
+        height: root.antiCornerRadius * 0.65
+        opacity: root.antiCornerRadius > 0 ? 1 : 0
+        visible: opacity > 0
+        antialiasing: true
+
+        ShapePath {
+            fillColor: root.surfaceColor
+            strokeColor: "transparent"
+            startX: 0
+            startY: 0
+            PathLine {
+                x: 0
+                y: antiCornerRight.height
+            }
+            PathCubic {
+                x: antiCornerRight.width; y: 0
+                control1X: antiCornerRight.width * 0.55
+                control1Y: antiCornerRight.height
+                control2X: antiCornerRight.width
+                control2Y: antiCornerRight.height * 0.3
+            }
+        }
+
+        Behavior on opacity {
+            NumberAnimation { duration: 280; easing.type: Easing.OutCubic }
+        }
+        Behavior on width {
+            NumberAnimation { duration: 360; easing.type: Easing.OutCubic }
+        }
+        Behavior on height {
+            NumberAnimation { duration: 360; easing.type: Easing.OutCubic }
+        }
+    }
+
+    Rectangle {
+        id: shadow
+
+        anchors.fill: bodyShape
+        anchors.topMargin: 8
+        radius: root.bottomRadius
+        color: "#000000"
+        opacity: 0
+        scale: 1
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 220
+                easing.type: Easing.OutCubic
+            }
+        }
+    }
+
+    Rectangle {
+        id: outerGlow
+
+        anchors.fill: bodyShape
+        anchors.margins: -1
+        radius: root.bottomRadius + 1
+        color: "transparent"
+        border.width: 1
+        border.color: "#000000"
+        opacity: 0
+    }
+
+    Item {
+        id: bodyShape
+
+        anchors.fill: parent
+        clip: true
+
+        LiquidGlassSurface {
+            z: 0
+            anchors.fill: parent
+            active: root.liquidGlassActive
+            bottomRadius: root.bottomRadius
+            fallbackColor: !root.expanded && root.handleStyle === "strip" ? "#0c0c0c" : "#000000"
+        }
+
+        Rectangle {
+            id: coldSheen
+
+            x: parent.width * 0.08
+            y: 3
+            width: parent.width * 0.84
+            height: Math.max(6, parent.height * 0.32)
+            radius: height / 2
+            opacity: 0
+
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+
+                GradientStop {
+                    position: 0
+                    color: "#00243a00"
+                }
+
+                GradientStop {
+                    position: 0.34
+                    color: "#55d7ff"
+                }
+
+                GradientStop {
+                    position: 0.68
+                    color: "#d6fbff"
+                }
+
+                GradientStop {
+                    position: 1
+                    color: "#00243a00"
+                }
+            }
+        }
+
+        Rectangle {
+            id: leftCore
+
+            width: root.expanded ? 84 : 42
+            height: width
+            radius: width / 2
+            x: -width * 0.38
+            y: -width * 0.18
+            color: "#000000"
+            opacity: 0
+        }
+
+        Rectangle {
+            id: rightCore
+
+            width: root.expanded ? 96 : 48
+            height: width
+            radius: width / 2
+            x: parent.width - width * 0.58
+            y: parent.height - width * 0.68
+            color: "#000000"
+            opacity: 0
+        }
+
+        IslandContent {
+            id: islandContent
+
+            z: 10
+            anchors.fill: parent
+            // Padding relaxes to zero as a panel takes over — panels bring their own.
+            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.calcMorph) * (1 - root.powerMorph) * (1 - root.clipboardMorph) * (1 - root.volumeMorph) : 0
+            wifiMorph: root.wifiMorph
+            wifiMaxPanelHeight: root.wifiMaxPanelHeight
+            btMorph: root.btMorph
+            btMaxPanelHeight: root.btMaxPanelHeight
+            batteryMorph: root.batteryMorph
+            settingsMorph: root.settingsMorph
+            appsMorph: root.appsMorph
+            appsMaxPanelHeight: root.appsMaxPanelHeight
+            wallpaperMorph: root.wallpaperMorph
+            calcMorph: root.calcMorph
+            powerMorph: root.powerMorph
+            clipboardMorph: root.clipboardMorph
+            volumeMorph: root.volumeMorph
+            volumeKind: root.volumeKind
+            mode: root.mode
+            handleStyle: root.handleStyle
+            liquidGlassEnabled: root.liquidGlassEnabled
+            idleWidth: root.idleWidth
+            idleHeight: root.idleHeight
+            forceExpanded: root.forceExpanded
+            appName: root.appName
+            title: root.title
+            body: root.body
+            artist: root.artist
+            artUrl: root.artUrl
+            volume: root.volume
+            muted: root.muted
+            playing: root.playing
+            canGoPrevious: root.canGoPrevious
+            canTogglePlaying: root.canTogglePlaying
+            canGoNext: root.canGoNext
+            canSeek: root.canSeek
+            shuffleActive: root.shuffleActive
+            shuffleSupported: root.shuffleSupported
+            loopStateText: root.loopStateText
+            loopActive: root.loopActive
+            loopSupported: root.loopSupported
+            mediaPosition: root.mediaPosition
+            mediaLength: root.mediaLength
+            mediaAvailable: root.mediaAvailable
+            fontFamily: root.fontFamily
+            fontOptions: root.fontOptions
+            batteryHoverText: root.batteryHoverText
+            batteryCharging: root.batteryCharging
+            batteryLevel: root.batteryLevel
+            batteryAvailable: root.batteryAvailable
+            batteryHealth: root.batteryHealth
+            batteryCycles: root.batteryCycles
+            batteryFullCapacityWh: root.batteryFullCapacityWh
+            batteryDesignCapacityWh: root.batteryDesignCapacityWh
+            batteryVoltage: root.batteryVoltage
+            batteryPower: root.batteryPower
+            batteryStatus: root.batteryStatus
+            batteryModel: root.batteryModel
+            batteryThresholdSupported: root.batteryThresholdSupported
+            batteryThresholdEnabled: root.batteryThresholdEnabled
+            batteryThresholdBusy: root.batteryThresholdBusy
+            batteryThresholdStart: root.batteryThresholdStart
+            batteryThresholdEnd: root.batteryThresholdEnd
+            batteryThresholdStatusText: root.batteryThresholdStatusText
+            powerProfilesAvailable: root.powerProfilesAvailable
+            availablePowerProfiles: root.availablePowerProfiles
+            activePowerProfile: root.activePowerProfile
+            powerProfileBusy: root.powerProfileBusy
+            powerProfileStatusText: root.powerProfileStatusText
+            performanceDegraded: root.performanceDegraded
+            performanceInhibited: root.performanceInhibited
+            wifiConnected: root.wifiConnected
+            wifiSsid: root.wifiSsid
+            wifiSignal: root.wifiSignal
+            btEnabled: root.btEnabled
+            btConnected: root.btConnected
+            btDeviceName: root.btDeviceName
+            btBattery: root.btBattery
+            btDiscovering: root.btDiscovering
+            btDevices: root.btDevices
+            btStatusText: root.btStatusText
+            timeText: root.timeText
+            dateText: root.dateText
+            workspaceIndicatorId: root.workspaceIndicatorId
+            workspaceIndicatorCount: root.workspaceIndicatorCount
+            wifiRadioEnabled: root.wifiRadioEnabled
+            wifiNetworks: root.wifiNetworks
+            wifiExpandedSsid: root.wifiExpandedSsid
+            wifiPasswordDraft: root.wifiPasswordDraft
+            wifiStatusText: root.wifiStatusText
+            wifiConnecting: root.wifiConnecting
+            favoriteAppEntries: root.favoriteAppEntries
+            favoriteAppIds: root.favoriteAppIds
+            appsPickerEntries: root.appsPickerEntries
+            appsPickerOpen: root.appsPickerOpen
+            appsSearchDraft: root.appsSearchDraft
+            appsStatusText: root.appsStatusText
+            appsFavoriteSlots: root.appsFavoriteSlots
+            appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
+            appsPickerHighlightIndex: root.appsPickerHighlightIndex
+            clipboardEntries: root.clipboardEntries
+            clipboardHighlightIndex: root.clipboardHighlightIndex
+            clipboardStatusText: root.clipboardStatusText
+            wallpaperEntries: root.wallpaperEntries
+            currentWallpaperPath: root.currentWallpaperPath
+            wallpaperStatusText: root.wallpaperStatusText
+            wallpaperApplying: root.wallpaperApplying
+            wallpaperHighlightIndex: root.wallpaperHighlightIndex
+            onPreviousRequested: root.previousRequested()
+            onPlayPauseRequested: root.playPauseRequested()
+            onNextRequested: root.nextRequested()
+            onShuffleRequested: root.shuffleRequested()
+            onLoopRequested: root.loopRequested()
+            onFavoriteRequested: root.favoriteRequested()
+            onDismissRequested: root.dismissRequested()
+            onWifiSettingsRequested: root.wifiSettingsRequested()
+            onWifiCloseRequested: root.wifiCloseRequested()
+            onWifiToggleRadioRequested: root.wifiToggleRadioRequested()
+            onWifiRowRequested: ssid => root.wifiRowRequested(ssid)
+            onWifiConnectRequested: (ssid, secured) => root.wifiConnectRequested(ssid, secured)
+            onWifiDisconnectRequested: ssid => root.wifiDisconnectRequested(ssid)
+            onWifiPasswordChanged: text => root.wifiPasswordChanged(text)
+            onBtCloseRequested: root.btCloseRequested()
+            onBtToggleRadioRequested: root.btToggleRadioRequested()
+            onBtRefreshRequested: root.btRefreshRequested()
+            onBtDeviceRequested: device => root.btDeviceRequested(device)
+            onBatteryRequested: root.batteryRequested()
+            onBatteryCloseRequested: root.batteryCloseRequested()
+            onBatteryToggleThresholdRequested: root.batteryToggleThresholdRequested()
+            onPowerProfileRequested: profile => root.powerProfileRequested(profile)
+            onGlacierSettingsRequested: root.glacierSettingsRequested()
+            onSettingsCloseRequested: root.settingsCloseRequested()
+            onLiquidGlassRequested: enabled => root.liquidGlassRequested(enabled)
+            onFontFamilyRequested: family => root.fontFamilyRequested(family)
+            onIdleWidthRequested: width => root.idleWidthRequested(width)
+            onIdleHeightRequested: height => root.idleHeightRequested(height)
+            onSettingsResetRequested: root.settingsResetRequested()
+            onAppsSettingsRequested: root.appsSettingsRequested()
+            onAppsCloseRequested: root.appsCloseRequested()
+            onAppsPickerToggleRequested: root.appsPickerToggleRequested()
+            onAppsSearchChanged: text => root.appsSearchChanged(text)
+            onAppsSearchAccepted: root.appsSearchAccepted()
+            onAppsPickerNavRequested: delta => root.appsPickerNavRequested(delta)
+            onAppsFavoriteNavRequested: (dx, dy) => root.appsFavoriteNavRequested(dx, dy)
+            onAppsFavoriteActivateRequested: root.appsFavoriteActivateRequested()
+            onAppsFavoriteToggleRequested: id => root.appsFavoriteToggleRequested(id)
+            onAppsLaunchRequested: id => root.appsLaunchRequested(id)
+            onWallpaperCloseRequested: root.wallpaperCloseRequested()
+            onWallpaperRefreshRequested: root.wallpaperRefreshRequested()
+            onWallpaperApplyRequested: path => root.wallpaperApplyRequested(path)
+            onWallpaperHighlightNavRequested: (dx, dy) => root.wallpaperHighlightNavRequested(dx, dy)
+            onWallpaperActivateRequested: root.wallpaperActivateRequested()
+            onCalcCloseRequested: root.calcCloseRequested()
+            onPowerCloseRequested: root.powerCloseRequested()
+            onPowerActionRequested: action => root.powerActionRequested(action)
+            onClipboardCloseRequested: root.clipboardCloseRequested()
+            onClipboardRefreshRequested: root.clipboardRefreshRequested()
+            onClipboardClearRequested: root.clipboardClearRequested()
+            onClipboardApplyRequested: raw => root.clipboardApplyRequested(raw)
+            onClipboardDeleteRequested: raw => root.clipboardDeleteRequested(raw)
+            onClipboardHighlightNavRequested: delta => root.clipboardHighlightNavRequested(delta)
+            onClipboardActivateRequested: root.clipboardActivateRequested()
+            onBtSettingsRequested: root.btSettingsRequested()
+            onSeekRequested: position => root.seekRequested(position)
+            onHandleStyleRequested: style => root.handleStyleRequested(style)
+        }
+    }
+
+    // Height is a plain binding, not part of the state, so it can re-target while
+    // the morph is still running — the network list usually lands mid-transition,
+    // and the app picker drawer opens long after the morph has settled.
+    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : (root.mode === "calc" ? Math.max(root.targetH, root.calcPanelHeight) : (root.mode === "power" ? Math.max(root.targetH, root.powerPanelHeight) : (root.mode === "clipboard" ? Math.max(root.targetH, root.clipboardPanelHeight) : root.targetH))))))))
+
+    state: root.mode !== "idle" ? root.mode : (root.forceExpanded ? "peek" : "collapsed")
+
+    states: [
+        State {
+            name: "collapsed"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "peek"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "notify"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "media"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "volume"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 1
+            }
+        },
+        State {
+            name: "wifi"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 1
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "bluetooth"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 1
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "battery"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 1
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "settings"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 1
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "apps"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 1
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "wallpaper"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 1
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "calc"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 1
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "power"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 1
+                root.clipboardMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "clipboard"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 1
+                root.volumeMorph: 0
+            }
+        }
+    ]
+
+    transitions: [
+        // Morph into the Wi-Fi manager: the shape widens first, then unfolds
+        // downward with a slight overshoot while the contents cross-fade.
+        Transition {
+            to: "wifi"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 340
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.7
+                }
+
+                NumberAnimation {
+                    property: "wifiMorph"
+                    duration: 440
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Morph back: fold the height away first, then settle the width.
+        Transition {
+            from: "wifi"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "wifiMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            to: "bluetooth"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 340
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.7
+                }
+
+                NumberAnimation {
+                    property: "btMorph"
+                    duration: 440
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "bluetooth"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "btMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            to: "battery"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 340
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.7
+                }
+
+                NumberAnimation {
+                    property: "batteryMorph"
+                    duration: 440
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "battery"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "batteryMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            to: "settings"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 340
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.7
+                }
+
+                NumberAnimation {
+                    property: "settingsMorph"
+                    duration: 440
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "settings"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "settingsMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Morph into the favorites dock. Same choreography as Wi-Fi so the two
+        // panels feel like the same gesture: widen with a small overshoot while
+        // the grid unfolds and the peek cross-fades out.
+        Transition {
+            to: "apps"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 340
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.7
+                }
+
+                NumberAnimation {
+                    property: "appsMorph"
+                    duration: 440
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "apps"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "appsMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Morph into the wallpaper switcher. Same choreography as the favorites
+        // dock and Wi-Fi so every panel morph feels like the same gesture.
+        Transition {
+            to: "wallpaper"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 340
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.7
+                }
+
+                NumberAnimation {
+                    property: "wallpaperMorph"
+                    duration: 440
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "wallpaper"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "wallpaperMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Morph into the calculator. Same choreography as the other panels.
+        Transition {
+            to: "calc"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 340
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.7
+                }
+
+                NumberAnimation {
+                    property: "calcMorph"
+                    duration: 440
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "calc"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "calcMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Morph into the power menu. Same choreography as the other panels.
+        Transition {
+            to: "power"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 340
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.7
+                }
+
+                NumberAnimation {
+                    property: "powerMorph"
+                    duration: 440
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "power"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "powerMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Morph into the clipboard history. Same choreography as the other panels.
+        Transition {
+            to: "clipboard"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 340
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.7
+                }
+
+                NumberAnimation {
+                    property: "clipboardMorph"
+                    duration: 440
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "clipboard"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "clipboardMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Volume HUD: the handle springs out sideways and the bar is already
+        // there by the time the width settles, so the pill reads as one gesture
+        // rather than a shape that fills in afterwards.
+        Transition {
+            to: "volume"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 400
+                    easing.type: Easing.OutBack
+                    easing.overshoot: 0.9
+                }
+
+                NumberAnimation {
+                    property: "volumeMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "volume"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "volumeMorph"
+                    duration: 180
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            NumberAnimation {
+                property: "width"
+                duration: 360
+                easing.type: Easing.OutCubic
+            }
+
+            NumberAnimation {
+                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,calcMorph,powerMorph,clipboardMorph,volumeMorph"
+                duration: 200
+                easing.type: Easing.OutCubic
+            }
+        }
+    ]
+
+    // Height is never animated by a transition, so this Behavior owns every height
+    // change: the morph itself, networks arriving, and rows expanding.
+    Behavior on width {
+        NumberAnimation {
+            duration: 360
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Behavior on height {
+        NumberAnimation {
+            duration: 300
+            // Only the volume pill drops in with a bounce; panels stay damped so a
+            // network list arriving mid-morph doesn't wobble the whole surface.
+            easing.type: root.mode === "volume" ? Easing.OutBack : Easing.OutCubic
+            easing.overshoot: 0.9
+        }
+    }
+
+    Behavior on y {
+        NumberAnimation {
+            duration: 360
+            easing.type: Easing.OutCubic
+        }
+    }
+}

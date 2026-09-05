@@ -18,6 +18,12 @@ Paths mirror where each file lives relative to `$HOME`. For example
 - Apps: `.config/btop/`, `.config/micro/`, `.config/mako/`, `.config/dolphinrc`,
   `.config/qylock/`, `.config/satty/`, `.config/shelly/`,
   `.config/VSCodium/User/`, `.vscode-oss/`
+- Quickshell: `quickshell/dynamic-glacier/` is a snapshot of the live, patched
+  `/usr/share/dynamic-glacier` shell (the bar/panel system driven by the
+  `dynamic-glacier-git` AUR package, customized via `patches/dynamic-glacier-git/`);
+  `quickshell/lockscreen/` is the deployed qylock lockscreen quickshell setup
+  from `~/.local/share/quickshell-lockscreen` (themes live in the separate
+  `qylock` project)
 - System/session bits: `.config/mimeapps.list`, `.config/uwsm/env`,
   `.config/wireplumber/`, `.config/xsettingsd/`, `.config/user-dirs.dirs`,
   `.config/user-dirs.locale`, `.config/paru/paru.conf`
