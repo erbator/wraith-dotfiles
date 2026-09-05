@@ -1,0 +1,1298 @@
+diff --git a/quickshell/modules/dynamicGlacier/DynamicGlacier.qml b/quickshell/modules/dynamicGlacier/DynamicGlacier.qml
+index 27445c9..082d66b 100644
+--- a/quickshell/modules/dynamicGlacier/DynamicGlacier.qml
++++ b/quickshell/modules/dynamicGlacier/DynamicGlacier.qml
+@@ -5,6 +5,7 @@ import Quickshell.Bluetooth
+ import Quickshell.Hyprland
+ import Quickshell.Io
+ import Quickshell.Services.Mpris
++import Quickshell.Services.Notifications
+ import Quickshell.Services.Pipewire
+ import Quickshell.Services.UPower
+ import Quickshell.Wayland
+@@ -123,7 +124,11 @@ Scope {
+     readonly property int appsWidth: 340
+     readonly property int appsMinHeight: 132
+     readonly property int appsMaxPanelHeight: 470
+-    readonly property string fontFamily: "Noto Sans"
++    readonly property int wallpaperWidth: 420
++    readonly property int wallpaperMinHeight: 132
++    readonly property int wallpaperMaxPanelHeight: 420
++    readonly property int wallpaperGridColumns: 3
++    readonly property string fontFamily: "FiraCode Nerd Font"
+     readonly property var audioSink: Pipewire.defaultAudioSink
+     readonly property bool mediaCanGoPrevious: root.activePlayer?.canGoPrevious ?? false
+     readonly property bool mediaCanTogglePlaying: (root.activePlayer?.canTogglePlaying ?? false) || (root.activePlayer?.canPause ?? false) || (root.activePlayer?.canPlay ?? false)
+@@ -213,6 +218,7 @@ Scope {
+ 
+     // App favorites dock (morphs the island into mode "apps")
+     readonly property int appsFavoriteSlots: 8
++    readonly property int appsGridColumns: 4
+     readonly property string favoritesPath: Quickshell.statePath("favorites.json")
+     readonly property string visualSettingsPath: Quickshell.statePath("settings.json")
+     readonly property string favoritesDir: root.parentDirectory(root.favoritesPath)
+@@ -220,12 +226,25 @@ Scope {
+     property bool appsPickerOpen: false
+     property string appsSearchDraft: ""
+     property string appsStatusText: ""
++    // Arrow-key navigation: which favorite tile / search row is highlighted.
++    property int appsFavoriteHighlightIndex: 0
++    property int appsPickerHighlightIndex: 0
+     // Every installed launcher entry, name-sorted, with its icon already resolved.
+     readonly property var appEntries: root.buildAppEntries()
+     readonly property var appsPickerEntries: root.filterAppEntries()
+     // Always appsFavoriteSlots long, so the grid can render empty slots as "add here".
+     readonly property var favoriteAppEntries: root.buildFavoriteEntries()
+ 
++    // Wallpaper switcher (morphs the island into mode "wallpaper")
++    readonly property string wallpaperDir: Quickshell.env("HOME") + "/Pictures/Wallpapers"
++    readonly property string wallpaperStatePath: Quickshell.statePath("wallpaper.json")
++    property var wallpaperEntries: []
++    property string currentWallpaperPath: ""
++    property string wallpaperStatusText: ""
++    property bool wallpaperApplying: false
++    property bool wallpaperScanned: false
++    property int wallpaperHighlightIndex: 0
++
+     function targetWidth() {
+         switch (root.visualMode) {
+         case "notify":
+@@ -244,6 +263,8 @@ Scope {
+             return root.settingsWidth;
+         case "apps":
+             return root.appsWidth;
++        case "wallpaper":
++            return root.wallpaperWidth;
+         default:
+             if (root.interactionOpen)
+                 return root.exitPreviewActive ? Math.max(root.peekWidth, root.exitPreviewWidth) : root.peekWidth;
+@@ -269,6 +290,8 @@ Scope {
+             return root.settingsMinHeight;
+         case "apps":
+             return root.appsMinHeight;
++        case "wallpaper":
++            return root.wallpaperMinHeight;
+         default:
+             if (root.interactionOpen)
+                 return root.peekHeight;
+@@ -296,7 +319,7 @@ Scope {
+     function scheduleInteractionClose() {
+         // Detail panels are hover-owned even when the idle island was pinned.
+         // Keeping the pinned state only applies to the compact idle peek.
+-        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || !root.pinnedOpen)
++        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || !root.pinnedOpen)
+             hoverLeaveTimer.restart();
+     }
+ 
+@@ -342,6 +365,7 @@ Scope {
+ 
+     function showIdle(preserveExitPreview) {
+         const keepExitPreview = preserveExitPreview === true;
++        const wasNotify = root.mode === "notify";
+ 
+         if (root.mode === "bluetooth" && root.btAdapter?.discovering)
+             root.btAdapter.discovering = false;
+@@ -349,6 +373,7 @@ Scope {
+         collapseTimer.stop();
+         root.mode = "idle";
+         root.pinnedOpen = false;
++        panelFocusGrab.active = false;
+         if (!keepExitPreview)
+             root.exitPreviewActive = false;
+         root.title = "Ready";
+@@ -363,6 +388,12 @@ Scope {
+         root.wifiPasswordDraft = "";
+         root.wifiStatusText = "";
+         root.btStatusText = "";
++        root.wallpaperStatusText = "";
++
++        // Tell the sending app its notification is gone (timeout or the user
++        // dismissed it), rather than leaving it thinking the banner is still up.
++        if (wasNotify && root.currentNotificationHandle)
++            root.currentNotificationHandle.dismiss();
+ 
+         if (root.liveLinksEnabled) {
+             root.chooseActivePlayer(null);
+@@ -433,13 +464,42 @@ Scope {
+         root.saveVisualSettings();
+     }
+ 
+-    function showNotification(summary, message, app) {
++    function showNotification(summary, message, app, timeoutMs) {
+         root.appName = app || "Notification";
+         root.title = summary || "New notification";
+         root.body = message || "";
+         root.artUrl = "";
+         root.mode = "notify";
+-        root.hold(5200);
++        root.hold(timeoutMs > 0 ? timeoutMs : 5200);
++    }
++
++    // The one real DBus notification currently on screen (org.freedesktop.
++    // Notifications, via NotificationServer below). Only one banner shows at
++    // a time — a newer notification replaces it outright, same as the manual
++    // `notify` IPC path always has, rather than queueing.
++    property var currentNotificationHandle: null
++
++    function handleIncomingNotification(notification) {
++        if (root.currentNotificationHandle) {
++            root.currentNotificationHandle.closed.disconnect(root.onCurrentNotificationClosed);
++            root.currentNotificationHandle.dismiss();
++        }
++
++        notification.tracked = true;
++        root.currentNotificationHandle = notification;
++        notification.closed.connect(root.onCurrentNotificationClosed);
++
++        const timeoutMs = notification.expireTimeout > 0 ? notification.expireTimeout : 5200;
++        root.showNotification(notification.summary, notification.body, notification.appName, timeoutMs);
++    }
++
++    // Fires when a notification closes for any reason — our own timeout,
++    // the sending app withdrawing it, or another notification replacing it.
++    function onCurrentNotificationClosed(reason) {
++        root.currentNotificationHandle = null;
++
++        if (root.mode === "notify")
++            root.showIdle();
+     }
+ 
+     function showMedia(trackTitle, trackArtist, isPlaying, trackArtUrl) {
+@@ -1329,12 +1389,104 @@ Scope {
+         root.appsPickerOpen = false;
+         root.appsSearchDraft = "";
+         root.appsStatusText = "";
++        root.appsFavoriteHighlightIndex = 0;
++        panelFocusGrab.active = true;
+     }
+ 
+     function toggleAppsPicker() {
+         root.appsPickerOpen = !root.appsPickerOpen;
+         root.appsSearchDraft = "";
+         root.appsStatusText = "";
++        root.appsPickerHighlightIndex = 0;
++    }
++
++    // Morphs the island into the wallpaper switcher, or collapses it back to
++    // idle if it is already showing. Mirrors toggleAppsPanel.
++    function toggleWallpaperPanel() {
++        if (root.mode === "wallpaper") {
++            root.showIdle();
++            return;
++        }
++
++        collapseTimer.stop();
++        root.exitPreviewActive = false;
++        root.mode = "wallpaper";
++        root.wallpaperStatusText = "";
++        root.wallpaperHighlightIndex = 0;
++        panelFocusGrab.active = true;
++
++        if (!root.wallpaperScanned)
++            root.scanWallpapers();
++    }
++
++    function scanWallpapers() {
++        root.wallpaperScanned = true;
++        wallpaperScanProc.exec(["sh", "-c", "find " + JSON.stringify(root.wallpaperDir) + " -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' \\) -printf '%f\\n' | sort"]);
++    }
++
++    function parseWallpaperEntries(text) {
++        const names = text.split("\n").filter(name => name.trim() !== "");
++
++        root.wallpaperEntries = names.map(name => ({
++            name: name,
++            path: root.wallpaperDir + "/" + name
++        }));
++
++        root.wallpaperHighlightIndex = root.clampIndex(root.wallpaperHighlightIndex, root.wallpaperEntries.length);
++    }
++
++    function applyWallpaper(path) {
++        if (path === "" || root.wallpaperApplying)
++            return;
++
++        root.wallpaperApplying = true;
++        root.wallpaperStatusText = "";
++        wallpaperApplyProc.pendingPath = path;
++        wallpaperApplyProc.exec(["awww", "img", path, "--transition-type", "grow", "--transition-duration", "0.6", "--transition-fps", "60"]);
++    }
++
++    function onWallpaperApplyFinished(path, success) {
++        root.wallpaperApplying = false;
++
++        if (!success) {
++            root.wallpaperStatusText = "Failed to apply";
++            return;
++        }
++
++        root.currentWallpaperPath = path;
++        wallpaperStateFile.setText(JSON.stringify({ path: path }));
++    }
++
++    function applyPersistedWallpaperState(text) {
++        try {
++            const parsed = JSON.parse(text);
++
++            if (typeof parsed.path === "string")
++                root.currentWallpaperPath = parsed.path;
++        } catch (error) {
++            // No saved wallpaper state yet, or hand-edited into invalid JSON.
++        }
++    }
++
++    function moveWallpaperHighlight(dx, dy) {
++        const columns = root.wallpaperGridColumns;
++        const count = root.wallpaperEntries.length;
++
++        if (count === 0)
++            return;
++
++        const rows = Math.ceil(count / columns);
++        const col = Math.max(0, Math.min(columns - 1, (root.wallpaperHighlightIndex % columns) + dx));
++        const row = Math.max(0, Math.min(rows - 1, Math.floor(root.wallpaperHighlightIndex / columns) + dy));
++
++        root.wallpaperHighlightIndex = root.clampIndex(row * columns + col, count);
++    }
++
++    function activateWallpaperHighlight() {
++        const entry = root.wallpaperEntries[root.wallpaperHighlightIndex];
++
++        if (entry)
++            root.applyWallpaper(entry.path);
+     }
+ 
+     function toggleFavoriteApp(id) {
+@@ -1369,15 +1521,56 @@ Scope {
+         root.showIdle();
+     }
+ 
+-    // Enter in the search field launches whatever is at the top of the filtered
+-    // list, so the picker doubles as a keyboard launcher.
+-    function launchTopSearchMatch() {
++    function clampIndex(value, length) {
++        if (length <= 0)
++            return 0;
++
++        return Math.max(0, Math.min(length - 1, value));
++    }
++
++    // Arrow keys in the search field move this; Enter launches whichever row
++    // is highlighted, so the picker doubles as a keyboard launcher.
++    function moveAppsPickerHighlight(delta) {
++        root.appsPickerHighlightIndex = root.clampIndex(root.appsPickerHighlightIndex + delta, root.appsPickerEntries.length);
++    }
++
++    function launchHighlightedSearchMatch() {
+         const entries = root.appsPickerEntries;
+ 
+-        if (root.appsSearchDraft.trim() === "" || entries.length === 0)
++        if (!root.appsPickerOpen || entries.length === 0)
+             return;
+ 
+-        root.launchFavoriteApp(entries[0].id);
++        const entry = entries[root.clampIndex(root.appsPickerHighlightIndex, entries.length)];
++
++        if (entry)
++            root.launchFavoriteApp(entry.id);
++    }
++
++    // Arrow keys over the favorites grid, wrapped at the row/column bounds
++    // rather than jumping to the next row, so up/down/left/right stays
++    // predictable at the edges.
++    function moveAppsFavoriteHighlight(dx, dy) {
++        const columns = root.appsGridColumns;
++        const count = root.appsFavoriteSlots;
++        const rows = Math.ceil(count / columns);
++        const col = Math.max(0, Math.min(columns - 1, (root.appsFavoriteHighlightIndex % columns) + dx));
++        const row = Math.max(0, Math.min(rows - 1, Math.floor(root.appsFavoriteHighlightIndex / columns) + dy));
++
++        root.appsFavoriteHighlightIndex = root.clampIndex(row * columns + col, count);
++    }
++
++    // Enter/Return over the favorites grid: launch a filled tile, or open the
++    // picker to fill an empty one.
++    function activateAppsFavoriteHighlight() {
++        const entry = root.favoriteAppEntries[root.appsFavoriteHighlightIndex];
++
++        if (!entry)
++            return;
++
++        if (entry.filled)
++            root.launchFavoriteApp(entry.id);
++        else
++            root.toggleAppsPicker();
+     }
+ 
+     function applyFavoritesJson(text) {
+@@ -1439,7 +1632,7 @@ Scope {
+         onTriggered: {
+             root.pointerInside = false;
+ 
+-            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps")
++            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper")
+                 root.showIdle();
+         }
+     }
+@@ -1837,6 +2030,39 @@ Scope {
+         }
+     }
+ 
++    Process {
++        id: wallpaperDirProc
++
++        running: true
++        command: ["mkdir", "-p", root.wallpaperDir]
++    }
++
++    Process {
++        id: wallpaperScanProc
++
++        stdout: StdioCollector {
++            onStreamFinished: root.parseWallpaperEntries(text)
++        }
++    }
++
++    Process {
++        id: wallpaperApplyProc
++
++        property string pendingPath: ""
++
++        onExited: exitCode => root.onWallpaperApplyFinished(wallpaperApplyProc.pendingPath, exitCode === 0)
++    }
++
++    FileView {
++        id: wallpaperStateFile
++
++        path: root.wallpaperStatePath
++        preload: true
++        atomicWrites: true
++        printErrors: false
++        onLoaded: root.applyPersistedWallpaperState(wallpaperStateFile.text())
++    }
++
+     Timer {
+         id: visualSettingsInitialSaveTimer
+ 
+@@ -1934,7 +2160,7 @@ Scope {
+         // Tall enough for the tallest expanded panel so the morph never clips.
+         // The surface is transparent and input is limited to `mask`, so the extra
+         // room costs nothing.
+-        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 180, root.appsMaxPanelHeight + 32)
++        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 180, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32)
+         visible: true
+ 
+         // end-4 already enables compositor blur for `quickshell:*` surfaces.
+@@ -2073,6 +2299,13 @@ Scope {
+                 appsSearchDraft: root.appsSearchDraft
+                 appsStatusText: root.appsStatusText
+                 appsFavoriteSlots: root.appsFavoriteSlots
++                appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
++                appsPickerHighlightIndex: root.appsPickerHighlightIndex
++                wallpaperEntries: root.wallpaperEntries
++                currentWallpaperPath: root.currentWallpaperPath
++                wallpaperStatusText: root.wallpaperStatusText
++                wallpaperApplying: root.wallpaperApplying
++                wallpaperHighlightIndex: root.wallpaperHighlightIndex
+                 onPreviousRequested: root.mediaPrevious()
+                 onPlayPauseRequested: root.mediaTogglePlaying()
+                 onNextRequested: root.mediaNext()
+@@ -2107,10 +2340,21 @@ Scope {
+                 onSettingsResetRequested: root.resetVisualSettings()
+                 onAppsCloseRequested: root.closePanelToWideIdle(root.appsWidth)
+                 onAppsPickerToggleRequested: root.toggleAppsPicker()
+-                onAppsSearchChanged: text => root.appsSearchDraft = text
+-                onAppsSearchAccepted: root.launchTopSearchMatch()
++                onAppsSearchChanged: text => {
++                    root.appsSearchDraft = text;
++                    root.appsPickerHighlightIndex = 0;
++                }
++                onAppsSearchAccepted: root.launchHighlightedSearchMatch()
++                onAppsPickerNavRequested: delta => root.moveAppsPickerHighlight(delta)
++                onAppsFavoriteNavRequested: (dx, dy) => root.moveAppsFavoriteHighlight(dx, dy)
++                onAppsFavoriteActivateRequested: root.activateAppsFavoriteHighlight()
+                 onAppsFavoriteToggleRequested: id => root.toggleFavoriteApp(id)
+                 onAppsLaunchRequested: id => root.launchFavoriteApp(id)
++                onWallpaperCloseRequested: root.closePanelToWideIdle(root.wallpaperWidth)
++                onWallpaperRefreshRequested: root.scanWallpapers()
++                onWallpaperApplyRequested: path => root.applyWallpaper(path)
++                onWallpaperHighlightNavRequested: (dx, dy) => root.moveWallpaperHighlight(dx, dy)
++                onWallpaperActivateRequested: root.activateWallpaperHighlight()
+                 onBtSettingsRequested: root.toggleBluetoothPanel()
+                 onSeekRequested: position => root.mediaSeek(position)
+                 onHandleStyleRequested: style => root.setHandleStyle(style)
+@@ -2267,7 +2511,7 @@ Scope {
+                 width: island.width
+                 height: root.mode === "idle" && !root.interactionOpen ? Math.max(root.reservedZone, island.height) : island.height
+                 hoverEnabled: true
+-                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
++                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
+                 cursorShape: Qt.PointingHandCursor
+                 onEntered: root.keepInteractionOpen(true)
+                 onPositionChanged: mouse => root.maybeFinishExitPreview(mouse.x, width)
+@@ -2285,6 +2529,42 @@ Scope {
+         }
+     }
+ 
++    // Registers as the org.freedesktop.Notifications DBus service, making the
++    // island the system's real notification handler. Only one process can own
++    // that name — whatever other daemon (mako, dunst, ...) would otherwise
++    // grab it needs to be disabled, or this loses the race on startup.
++    NotificationServer {
++        id: notificationServer
++
++        bodySupported: true
++        bodyMarkupSupported: false
++        bodyImagesSupported: false
++        imageSupported: false
++        actionsSupported: false
++        actionIconsSupported: false
++        inlineReplySupported: false
++        persistenceSupported: false
++
++        onNotification: notification => root.handleIncomingNotification(notification)
++    }
++
++    // Layer surfaces only get real keyboard events with an explicit Hyprland
++    // grab — WlrKeyboardFocus.OnDemand alone only fires on a pointer click
++    // into the island, so arrow keys never arrived when a keyboard-driven
++    // panel (Apps, Wallpaper) was opened via a keybind/IPC call instead of a
++    // click. This grabs the keyboard for the island's own window for as long
++    // as one of those panels is open.
++    HyprlandFocusGrab {
++        id: panelFocusGrab
++
++        windows: [islandWindow]
++
++        onCleared: {
++            if (root.mode === "apps" || root.mode === "wallpaper")
++                root.showIdle();
++        }
++    }
++
+     IpcHandler {
+         target: "dynamicGlacier"
+ 
+@@ -2292,6 +2572,13 @@ Scope {
+             root.showIdle();
+         }
+ 
++        function toggleOpen(): void {
++            if (root.mode === "idle")
++                root.pinnedOpen = !root.pinnedOpen;
++            else
++                root.showIdle();
++        }
++
+         function handle(style: string): void {
+             root.setHandleStyle(style);
+         }
+@@ -2336,6 +2623,10 @@ Scope {
+             root.toggleAppsPanel();
+         }
+ 
++        function wallpaper(): void {
++            root.toggleWallpaperPanel();
++        }
++
+         function wifi(): void {
+             root.toggleWifiPanel();
+         }
+diff --git a/quickshell/modules/dynamicGlacier/IslandContent.qml b/quickshell/modules/dynamicGlacier/IslandContent.qml
+index d816bfa..d850d73 100644
+--- a/quickshell/modules/dynamicGlacier/IslandContent.qml
++++ b/quickshell/modules/dynamicGlacier/IslandContent.qml
+@@ -110,6 +110,14 @@ Item {
+     property real settingsMorph: 0
+     readonly property real settingsContentHeight: settingsContent.contentHeight
+ 
++    property real wallpaperMorph: 0
++    readonly property real wallpaperContentHeight: wallpaperContent.contentHeight
++    property var wallpaperEntries: []
++    property string currentWallpaperPath: ""
++    property string wallpaperStatusText: ""
++    property bool wallpaperApplying: false
++    property int wallpaperHighlightIndex: 0
++
+     property var favoriteAppEntries: []
+     property var favoriteAppIds: []
+     property var appsPickerEntries: []
+@@ -117,6 +125,8 @@ Item {
+     property string appsSearchDraft: ""
+     property string appsStatusText: ""
+     property int appsFavoriteSlots: 8
++    property int appsFavoriteHighlightIndex: 0
++    property int appsPickerHighlightIndex: 0
+ 
+     // 0 = island surface content, 1 = favorites dock. Driven by the surface morph transition.
+     property real appsMorph: 0
+@@ -161,7 +171,7 @@ Item {
+     readonly property int favoriteAppCount: root.favoriteAppIds.length
+ 
+     // Only one panel morph is ever non-zero, so the peek can react to whichever is running.
+-    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph)
++    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph)
+ 
+     // The peek stays mounted through the morph so it can fade/shrink into the panel.
+     readonly property bool peekVisible: (root.mode === "idle" && root.forceExpanded) || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps"
+@@ -197,11 +207,19 @@ Item {
+     signal idleWidthRequested(int width)
+     signal idleHeightRequested(int height)
+     signal settingsResetRequested
++    signal wallpaperCloseRequested
++    signal wallpaperRefreshRequested
++    signal wallpaperApplyRequested(string path)
++    signal wallpaperHighlightNavRequested(int dx, int dy)
++    signal wallpaperActivateRequested
+     signal appsSettingsRequested
+     signal appsCloseRequested
+     signal appsPickerToggleRequested
+     signal appsSearchChanged(string text)
+     signal appsSearchAccepted
++    signal appsPickerNavRequested(int delta)
++    signal appsFavoriteNavRequested(int dx, int dy)
++    signal appsFavoriteActivateRequested
+     signal appsFavoriteToggleRequested(string id)
+     signal appsLaunchRequested(string id)
+     signal btSettingsRequested
+@@ -1055,6 +1073,25 @@ Item {
+         onResetRequested: root.settingsResetRequested()
+     }
+ 
++    WallpaperPanel {
++        id: wallpaperContent
++
++        anchors.fill: parent
++        entries: root.wallpaperEntries
++        currentPath: root.currentWallpaperPath
++        statusText: root.wallpaperStatusText
++        applying: root.wallpaperApplying
++        highlightIndex: root.wallpaperHighlightIndex
++        fontFamily: root.fontFamily
++        morph: root.wallpaperMorph
++        onCloseRequested: root.wallpaperCloseRequested()
++        onSettingsRequested: root.glacierSettingsRequested()
++        onRefreshRequested: root.wallpaperRefreshRequested()
++        onApplyRequested: path => root.wallpaperApplyRequested(path)
++        onHighlightNavRequested: (dx, dy) => root.wallpaperHighlightNavRequested(dx, dy)
++        onActivateRequested: root.wallpaperActivateRequested()
++    }
++
+     Item {
+         id: appsContent
+ 
+@@ -1076,7 +1113,28 @@ Item {
+             anchors.margins: root.appsPanelPadding
+             active: root.mode === "apps" || root.appsMorph > 0
+ 
+-            sourceComponent: ColumnLayout {
++            // A FocusScope so the favorites grid can take arrow-key input as
++            // soon as the panel opens. The search TextInput further down takes
++            // focus for itself while the picker is open and hands it back here
++            // when it closes, so Up/Down/Enter always reach the right target.
++            sourceComponent: FocusScope {
++                id: appsFocusScope
++
++                anchors.fill: parent
++                focus: true
++
++                Component.onCompleted: appsFocusScope.forceActiveFocus()
++
++                Keys.onUpPressed: if (!root.appsPickerOpen) root.appsFavoriteNavRequested(0, -1)
++                Keys.onDownPressed: if (!root.appsPickerOpen) root.appsFavoriteNavRequested(0, 1)
++                Keys.onLeftPressed: if (!root.appsPickerOpen) root.appsFavoriteNavRequested(-1, 0)
++                Keys.onRightPressed: if (!root.appsPickerOpen) root.appsFavoriteNavRequested(1, 0)
++                Keys.onReturnPressed: if (!root.appsPickerOpen) root.appsFavoriteActivateRequested()
++                Keys.onEnterPressed: if (!root.appsPickerOpen) root.appsFavoriteActivateRequested()
++                Keys.onEscapePressed: root.appsCloseRequested()
++
++            ColumnLayout {
++                anchors.fill: parent
+                 spacing: root.appsSectionSpacing
+ 
+                 // The three rows below are pinned at every size so the drawer stays the
+@@ -1203,6 +1261,7 @@ Item {
+                             // Tiles stagger in off the shared morph progress, same as the
+                             // Wi-Fi rows, so both panels unfold with one rhythm.
+                             readonly property real appear: Math.max(0, Math.min(1, (root.appsMorph - appTile.index * 0.035) / 0.6))
++                            readonly property bool keyHighlighted: !root.appsPickerOpen && appTile.index === root.appsFavoriteHighlightIndex
+ 
+                             Layout.fillWidth: true
+                             Layout.fillHeight: true
+@@ -1210,8 +1269,8 @@ Item {
+                             Layout.maximumHeight: root.appsTileHeight
+                             radius: 14
+                             color: appTile.modelData.filled ? (appTileMouse.containsMouse ? "#161616" : "#0a0a0a") : (appTileMouse.containsMouse ? "#0e0e0e" : "transparent")
+-                            border.width: 1
+-                            border.color: appTile.modelData.filled ? "#232323" : "#191919"
++                            border.width: appTile.keyHighlighted ? 2 : 1
++                            border.color: appTile.keyHighlighted ? "#f0f0f0" : (appTile.modelData.filled ? "#232323" : "#191919")
+                             opacity: appTile.appear
+                             scale: 0.88 + 0.12 * appTile.appear
+ 
+@@ -1391,12 +1450,17 @@ Item {
+                             // Escape closes the drawer, which also drops the keyboard
+                             // grab the compositor handed us on click.
+                             Keys.onEscapePressed: root.appsPickerToggleRequested()
++                            Keys.onUpPressed: root.appsPickerNavRequested(-1)
++                            Keys.onDownPressed: root.appsPickerNavRequested(1)
+                             onVisibleChanged: {
+                                 if (!visible) {
+                                     // Release both the text and the focus, so a hidden
+-                                    // input can never keep hold of the keyboard.
++                                    // input can never keep hold of the keyboard. Hand
++                                    // focus back to the favorites grid so its arrow
++                                    // keys work again immediately.
+                                     appsSearchInput.text = "";
+                                     appsSearchInput.focus = false;
++                                    appsFocusScope.forceActiveFocus();
+                                     return;
+                                 }
+ 
+@@ -1472,6 +1536,10 @@ Item {
+                             interactive: contentHeight > height
+                             boundsBehavior: Flickable.StopAtBounds
+                             cacheBuffer: 240
++                            // Arrow keys move root.appsPickerHighlightIndex (handled on
++                            // the search TextInput); binding it here gets keyboard
++                            // scroll-into-view for free via highlightFollowsCurrentItem.
++                            currentIndex: root.appsPickerHighlightIndex
+ 
+                             delegate: Rectangle {
+                                 id: appsPickerRow
+@@ -1480,13 +1548,14 @@ Item {
+                                 required property int index
+ 
+                                 readonly property bool selected: root.favoriteAppIds.indexOf(appsPickerRow.modelData.id) !== -1
++                                readonly property bool keyHighlighted: appsPickerRow.ListView.isCurrentItem
+ 
+                                 width: ListView.view.width
+                                 height: root.appsPickerRowHeight
+                                 radius: 12
+-                                color: appsPickerRowMouse.containsMouse ? "#101010" : (appsPickerRow.selected ? "#0a0a0a" : "transparent")
++                                color: appsPickerRow.keyHighlighted ? "#141414" : (appsPickerRowMouse.containsMouse ? "#101010" : (appsPickerRow.selected ? "#0a0a0a" : "transparent"))
+                                 border.width: 1
+-                                border.color: appsPickerRow.selected ? "#232323" : "transparent"
++                                border.color: appsPickerRow.keyHighlighted ? "#f0f0f0" : (appsPickerRow.selected ? "#232323" : "transparent")
+ 
+                                 RowLayout {
+                                     anchors.fill: parent
+@@ -1578,6 +1647,7 @@ Item {
+                     }
+                 }
+             }
++            }
+         }
+     }
+ 
+diff --git a/quickshell/modules/dynamicGlacier/IslandSurface.qml b/quickshell/modules/dynamicGlacier/IslandSurface.qml
+index 9ec4a11..0152cdb 100644
+--- a/quickshell/modules/dynamicGlacier/IslandSurface.qml
++++ b/quickshell/modules/dynamicGlacier/IslandSurface.qml
+@@ -73,6 +73,9 @@ Item {
+     property real appsMorph: 0
+     readonly property real appsPanelHeight: islandContent.appsContentHeight
+ 
++    property real wallpaperMorph: 0
++    readonly property real wallpaperPanelHeight: islandContent.wallpaperContentHeight
++
+     // 0 = island, 1 = volume HUD. Same mechanism as the two panels above, so the
+     // pill grows out of the handle instead of being painted on top of it.
+     property real volumeMorph: 0
+@@ -131,6 +134,14 @@ Item {
+     property string appsSearchDraft: ""
+     property string appsStatusText: ""
+     property int appsFavoriteSlots: 8
++    property int appsFavoriteHighlightIndex: 0
++    property int appsPickerHighlightIndex: 0
++
++    property var wallpaperEntries: []
++    property string currentWallpaperPath: ""
++    property string wallpaperStatusText: ""
++    property bool wallpaperApplying: false
++    property int wallpaperHighlightIndex: 0
+ 
+     signal previousRequested
+     signal playPauseRequested
+@@ -165,8 +176,16 @@ Item {
+     signal appsPickerToggleRequested
+     signal appsSearchChanged(string text)
+     signal appsSearchAccepted
++    signal appsPickerNavRequested(int delta)
++    signal appsFavoriteNavRequested(int dx, int dy)
++    signal appsFavoriteActivateRequested
+     signal appsFavoriteToggleRequested(string id)
+     signal appsLaunchRequested(string id)
++    signal wallpaperCloseRequested
++    signal wallpaperRefreshRequested
++    signal wallpaperApplyRequested(string path)
++    signal wallpaperHighlightNavRequested(int dx, int dy)
++    signal wallpaperActivateRequested
+     signal btSettingsRequested
+     signal seekRequested(real position)
+     signal handleStyleRequested(string style)
+@@ -364,7 +383,7 @@ Item {
+             z: 10
+             anchors.fill: parent
+             // Padding relaxes to zero as a panel takes over — panels bring their own.
+-            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.volumeMorph) : 0
++            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.volumeMorph) : 0
+             wifiMorph: root.wifiMorph
+             wifiMaxPanelHeight: root.wifiMaxPanelHeight
+             btMorph: root.btMorph
+@@ -373,6 +392,7 @@ Item {
+             settingsMorph: root.settingsMorph
+             appsMorph: root.appsMorph
+             appsMaxPanelHeight: root.appsMaxPanelHeight
++            wallpaperMorph: root.wallpaperMorph
+             volumeMorph: root.volumeMorph
+             volumeKind: root.volumeKind
+             mode: root.mode
+@@ -452,6 +472,13 @@ Item {
+             appsSearchDraft: root.appsSearchDraft
+             appsStatusText: root.appsStatusText
+             appsFavoriteSlots: root.appsFavoriteSlots
++            appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
++            appsPickerHighlightIndex: root.appsPickerHighlightIndex
++            wallpaperEntries: root.wallpaperEntries
++            currentWallpaperPath: root.currentWallpaperPath
++            wallpaperStatusText: root.wallpaperStatusText
++            wallpaperApplying: root.wallpaperApplying
++            wallpaperHighlightIndex: root.wallpaperHighlightIndex
+             onPreviousRequested: root.previousRequested()
+             onPlayPauseRequested: root.playPauseRequested()
+             onNextRequested: root.nextRequested()
+@@ -485,8 +512,16 @@ Item {
+             onAppsPickerToggleRequested: root.appsPickerToggleRequested()
+             onAppsSearchChanged: text => root.appsSearchChanged(text)
+             onAppsSearchAccepted: root.appsSearchAccepted()
++            onAppsPickerNavRequested: delta => root.appsPickerNavRequested(delta)
++            onAppsFavoriteNavRequested: (dx, dy) => root.appsFavoriteNavRequested(dx, dy)
++            onAppsFavoriteActivateRequested: root.appsFavoriteActivateRequested()
+             onAppsFavoriteToggleRequested: id => root.appsFavoriteToggleRequested(id)
+             onAppsLaunchRequested: id => root.appsLaunchRequested(id)
++            onWallpaperCloseRequested: root.wallpaperCloseRequested()
++            onWallpaperRefreshRequested: root.wallpaperRefreshRequested()
++            onWallpaperApplyRequested: path => root.wallpaperApplyRequested(path)
++            onWallpaperHighlightNavRequested: (dx, dy) => root.wallpaperHighlightNavRequested(dx, dy)
++            onWallpaperActivateRequested: root.wallpaperActivateRequested()
+             onBtSettingsRequested: root.btSettingsRequested()
+             onSeekRequested: position => root.seekRequested(position)
+             onHandleStyleRequested: style => root.handleStyleRequested(style)
+@@ -496,7 +531,7 @@ Item {
+     // Height is a plain binding, not part of the state, so it can re-target while
+     // the morph is still running — the network list usually lands mid-transition,
+     // and the app picker drawer opens long after the morph has settled.
+-    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : root.targetH))))
++    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : root.targetH)))))
+ 
+     state: root.mode !== "idle" ? root.mode : (root.forceExpanded ? "peek" : "collapsed")
+ 
+@@ -511,6 +546,7 @@ Item {
+                 root.batteryMorph: 0
+                 root.settingsMorph: 0
+                 root.appsMorph: 0
++                root.wallpaperMorph: 0
+                 root.volumeMorph: 0
+             }
+         },
+@@ -524,6 +560,7 @@ Item {
+                 root.batteryMorph: 0
+                 root.settingsMorph: 0
+                 root.appsMorph: 0
++                root.wallpaperMorph: 0
+                 root.volumeMorph: 0
+             }
+         },
+@@ -537,6 +574,7 @@ Item {
+                 root.batteryMorph: 0
+                 root.settingsMorph: 0
+                 root.appsMorph: 0
++                root.wallpaperMorph: 0
+                 root.volumeMorph: 0
+             }
+         },
+@@ -550,6 +588,7 @@ Item {
+                 root.batteryMorph: 0
+                 root.settingsMorph: 0
+                 root.appsMorph: 0
++                root.wallpaperMorph: 0
+                 root.volumeMorph: 0
+             }
+         },
+@@ -563,6 +602,7 @@ Item {
+                 root.batteryMorph: 0
+                 root.settingsMorph: 0
+                 root.appsMorph: 0
++                root.wallpaperMorph: 0
+                 root.volumeMorph: 1
+             }
+         },
+@@ -576,6 +616,7 @@ Item {
+                 root.batteryMorph: 0
+                 root.settingsMorph: 0
+                 root.appsMorph: 0
++                root.wallpaperMorph: 0
+                 root.volumeMorph: 0
+             }
+         },
+@@ -589,6 +630,7 @@ Item {
+                 root.batteryMorph: 0
+                 root.settingsMorph: 0
+                 root.appsMorph: 0
++                root.wallpaperMorph: 0
+                 root.volumeMorph: 0
+             }
+         },
+@@ -602,6 +644,7 @@ Item {
+                 root.batteryMorph: 1
+                 root.settingsMorph: 0
+                 root.appsMorph: 0
++                root.wallpaperMorph: 0
+                 root.volumeMorph: 0
+             }
+         },
+@@ -615,6 +658,7 @@ Item {
+                 root.batteryMorph: 0
+                 root.settingsMorph: 1
+                 root.appsMorph: 0
++                root.wallpaperMorph: 0
+                 root.volumeMorph: 0
+             }
+         },
+@@ -628,6 +672,21 @@ Item {
+                 root.batteryMorph: 0
+                 root.settingsMorph: 0
+                 root.appsMorph: 1
++                root.wallpaperMorph: 0
++                root.volumeMorph: 0
++            }
++        },
++        State {
++            name: "wallpaper"
++
++            PropertyChanges {
++                root.width: root.targetW
++                root.wifiMorph: 0
++                root.btMorph: 0
++                root.batteryMorph: 0
++                root.settingsMorph: 0
++                root.appsMorph: 0
++                root.wallpaperMorph: 1
+                 root.volumeMorph: 0
+             }
+         }
+@@ -815,6 +874,43 @@ Item {
+                 }
+             }
+         },
++        // Morph into the wallpaper switcher. Same choreography as the favorites
++        // dock and Wi-Fi so every panel morph feels like the same gesture.
++        Transition {
++            to: "wallpaper"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 340
++                    easing.type: Easing.OutBack
++                    easing.overshoot: 0.7
++                }
++
++                NumberAnimation {
++                    property: "wallpaperMorph"
++                    duration: 440
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
++        Transition {
++            from: "wallpaper"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 300
++                    easing.type: Easing.InOutCubic
++                }
++
++                NumberAnimation {
++                    property: "wallpaperMorph"
++                    duration: 260
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
+         // Volume HUD: the handle springs out sideways and the bar is already
+         // there by the time the width settles, so the pill reads as one gesture
+         // rather than a shape that fills in afterwards.
+@@ -861,7 +957,7 @@ Item {
+             }
+ 
+             NumberAnimation {
+-                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,volumeMorph"
++                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,volumeMorph"
+                 duration: 200
+                 easing.type: Easing.OutCubic
+             }
+diff --git a/quickshell/modules/dynamicGlacier/TrayIndicator.qml b/quickshell/modules/dynamicGlacier/TrayIndicator.qml
+index 6b95367..8c74d1e 100644
+--- a/quickshell/modules/dynamicGlacier/TrayIndicator.qml
++++ b/quickshell/modules/dynamicGlacier/TrayIndicator.qml
+@@ -52,7 +52,7 @@ Item {
+ 
+                 text: root.label
+                 color: root.iconColor
+-                font.family: "Noto Sans"
++                font.family: "FiraCode Nerd Font"
+                 font.pixelSize: 10
+                 font.weight: Font.DemiBold
+                 visible: root.label !== "" && !root.circular
+diff --git a/quickshell/modules/dynamicGlacier/WallpaperPanel.qml b/quickshell/modules/dynamicGlacier/WallpaperPanel.qml
+new file mode 100644
+index 0000000..1c14cb9
+--- /dev/null
++++ b/quickshell/modules/dynamicGlacier/WallpaperPanel.qml
+@@ -0,0 +1,342 @@
++import QtQuick
++import QtQuick.Layouts
++
++Item {
++    id: root
++
++    property var entries: []
++    property string currentPath: ""
++    property string statusText: ""
++    property bool applying: false
++    property int highlightIndex: 0
++    property string fontFamily: "Noto Sans"
++    property real morph: 0
++
++    readonly property color primaryText: "#f7f7f7"
++    readonly property color secondaryText: "#777777"
++    readonly property int panelPadding: 16
++    readonly property int headerHeight: 32
++    readonly property int footerHeight: 24
++    readonly property int sectionSpacing: 10
++    readonly property int gridColumns: 3
++    readonly property int gridSpacing: 8
++    readonly property int cellHeight: 88
++    // Capped in whole rows, never a pixel height — a mid-row clip chops tile
++    // borders in half at the bottom edge instead of just scrolling them off.
++    readonly property int maxVisibleRows: 3
++    readonly property int gridRows: Math.max(1, Math.ceil(root.entries.length / root.gridColumns))
++    readonly property int visibleRows: Math.max(1, Math.min(root.maxVisibleRows, root.gridRows))
++    readonly property int gridHeight: root.visibleRows * root.cellHeight + Math.max(0, root.visibleRows - 1) * root.gridSpacing
++    readonly property real contentHeight: root.panelPadding * 2 + root.headerHeight + root.sectionSpacing + root.gridHeight + root.sectionSpacing + root.footerHeight
++    readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
++
++    signal closeRequested
++    signal settingsRequested
++    signal refreshRequested
++    signal applyRequested(string path)
++    signal highlightNavRequested(int dx, int dy)
++    signal activateRequested
++
++    opacity: root.panelProgress
++    visible: opacity > 0.001
++    scale: 0.94 + 0.06 * root.panelProgress
++    transformOrigin: Item.Top
++
++    // Unlike the Apps grid (which lives behind a Loader and gets a fresh
++    // FocusScope — and a fresh Component.onCompleted — every time it opens),
++    // this panel is instantiated once at startup like the other standalone
++    // panels. Component.onCompleted would only ever fire that one time, long
++    // before the panel is first opened, so arrow keys never had a focus
++    // target to reach. Re-grab focus on every open instead, via the same
++    // `visible` property already driven by panelProgress.
++    onVisibleChanged: {
++        if (root.visible)
++            wallpaperFocusScope.forceActiveFocus();
++    }
++
++    FocusScope {
++        id: wallpaperFocusScope
++
++        anchors.fill: parent
++        focus: true
++
++        Keys.onUpPressed: root.highlightNavRequested(0, -1)
++        Keys.onDownPressed: root.highlightNavRequested(0, 1)
++        Keys.onLeftPressed: root.highlightNavRequested(-1, 0)
++        Keys.onRightPressed: root.highlightNavRequested(1, 0)
++        Keys.onReturnPressed: root.activateRequested()
++        Keys.onEnterPressed: root.activateRequested()
++        Keys.onEscapePressed: root.closeRequested()
++
++        ColumnLayout {
++            anchors.fill: parent
++            anchors.margins: root.panelPadding
++            spacing: root.sectionSpacing
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.headerHeight
++                spacing: 10
++
++                Rectangle {
++                    Layout.preferredWidth: root.headerHeight
++                    Layout.preferredHeight: root.headerHeight
++                    radius: 11
++                    color: "#090909"
++                    border.width: 1
++                    border.color: "#232323"
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "wallpaper"
++                        size: 15
++                        color: root.primaryText
++                    }
++                }
++
++                ColumnLayout {
++                    Layout.fillWidth: true
++                    spacing: 0
++
++                    Text {
++                        Layout.fillWidth: true
++                        text: "Wallpaper"
++                        color: root.primaryText
++                        elide: Text.ElideRight
++                        font.family: root.fontFamily
++                        font.pixelSize: 15
++                        font.weight: Font.Bold
++                    }
++
++                    Text {
++                        Layout.fillWidth: true
++                        text: root.statusText !== "" ? root.statusText : (root.entries.length + (root.entries.length === 1 ? " image" : " images"))
++                        color: root.statusText !== "" ? "#f0736a" : root.secondaryText
++                        elide: Text.ElideRight
++                        font.family: root.fontFamily
++                        font.pixelSize: 11
++                        font.weight: Font.DemiBold
++                    }
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: refreshMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "refresh"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: refreshMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.refreshRequested()
++                    }
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: settingsMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "settings"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: settingsMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.settingsRequested()
++                    }
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: closeMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "close"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: closeMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.closeRequested()
++                    }
++                }
++            }
++
++            Item {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.gridHeight
++                Layout.maximumHeight: root.gridHeight
++                clip: true
++
++                Text {
++                    anchors.centerIn: parent
++                    text: "No images in ~/Pictures/Wallpapers"
++                    color: root.secondaryText
++                    visible: root.entries.length === 0
++                    font.family: root.fontFamily
++                    font.pixelSize: 12
++                    font.weight: Font.DemiBold
++                }
++
++                GridView {
++                    id: wallpaperGrid
++
++                    anchors.fill: parent
++                    visible: root.entries.length > 0
++                    model: root.entries
++                    cellWidth: width / root.gridColumns
++                    cellHeight: root.cellHeight
++                    interactive: contentHeight > height
++                    boundsBehavior: Flickable.StopAtBounds
++                    cacheBuffer: 400
++                    currentIndex: root.highlightIndex
++
++                    delegate: Item {
++                        id: wallpaperTile
++
++                        required property var modelData
++                        required property int index
++
++                        readonly property bool isCurrent: wallpaperTile.modelData.path === root.currentPath
++                        readonly property bool keyHighlighted: wallpaperTile.GridView.isCurrentItem
++
++                        width: wallpaperGrid.cellWidth
++                        height: wallpaperGrid.cellHeight
++
++                        Rectangle {
++                            id: tileFrame
++
++                            anchors.fill: parent
++                            anchors.margins: 4
++                            radius: 12
++                            color: "#0a0a0a"
++                            border.width: wallpaperTile.keyHighlighted ? 2 : 1
++                            border.color: wallpaperTile.keyHighlighted ? "#f0f0f0" : (wallpaperTile.isCurrent ? "#4ade80" : "#232323")
++                            // clip lives on the inner Item below, not here: clipping a
++                            // Rectangle that also draws a rounded border chops the
++                            // border's corners (Qt Quick clips to the bounding rect,
++                            // not the antialiased rounded path).
++
++                            Item {
++                                anchors.fill: parent
++                                anchors.margins: 1
++                                clip: true
++
++                                Image {
++                                    anchors.fill: parent
++                                    anchors.margins: 1
++                                    // Plain absolute paths coerce to file:// URLs correctly
++                                    // (including spaces) via QML's url-property handling —
++                                    // manual "file://" + path concatenation mangles spaces.
++                                    source: wallpaperTile.modelData.path
++                                    fillMode: Image.PreserveAspectCrop
++                                    asynchronous: true
++                                    smooth: true
++                                    sourceSize.width: 240
++                                    sourceSize.height: 180
++                                }
++
++                                Rectangle {
++                                    anchors.left: parent.left
++                                    anchors.right: parent.right
++                                    anchors.bottom: parent.bottom
++                                    height: 18
++                                    gradient: Gradient {
++                                        GradientStop { position: 0; color: "#00000000" }
++                                        GradientStop { position: 1; color: "#c0000000" }
++                                    }
++
++                                    Text {
++                                        anchors.left: parent.left
++                                        anchors.right: parent.right
++                                        anchors.bottom: parent.bottom
++                                        anchors.margins: 5
++                                        text: wallpaperTile.modelData.name
++                                        color: "#f0f0f0"
++                                        elide: Text.ElideRight
++                                        font.family: root.fontFamily
++                                        font.pixelSize: 9
++                                        font.weight: Font.DemiBold
++                                    }
++                                }
++                            }
++
++                            Rectangle {
++                                anchors.right: parent.right
++                                anchors.top: parent.top
++                                anchors.margins: 4
++                                width: 16
++                                height: 16
++                                radius: 8
++                                color: "#4ade80"
++                                visible: wallpaperTile.isCurrent
++
++                                MIcon {
++                                    anchors.centerIn: parent
++                                    name: "check"
++                                    size: 11
++                                    color: "#04140a"
++                                }
++                            }
++
++                            MouseArea {
++                                anchors.fill: parent
++                                hoverEnabled: true
++                                cursorShape: Qt.PointingHandCursor
++                                onClicked: root.applyRequested(wallpaperTile.modelData.path)
++                            }
++                        }
++                    }
++                }
++            }
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.footerHeight
++
++                Text {
++                    Layout.fillWidth: true
++                    text: "Drop images into ~/Pictures/Wallpapers"
++                    color: "#606060"
++                    elide: Text.ElideRight
++                    font.family: root.fontFamily
++                    font.pixelSize: 10
++                    font.weight: Font.DemiBold
++                }
++            }
++        }
++    }
++}
