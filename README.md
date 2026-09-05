@@ -8,9 +8,9 @@ can be reproduced by copying these files back into place.
 Paths mirror where each file lives relative to `$HOME`. For example
 `.config/hypr/hyprland.lua` here belongs at `~/.config/hypr/hyprland.lua`.
 
-- Shell: `.bashrc`, `.bash_profile`, `.bash_logout`, `.zshrc`, `.config/fish/`
+- Shell: `.config/fish/`
 - Window manager: `.config/hypr/`
-- Terminal: `.config/kitty/`, `.config/alacritty/`
+- Terminal: `.config/kitty/`
 - Prompt/theme: `.config/starship.toml`, `.config/gruvbox-rainbow.toml`,
   `.config/pastel-powerline.toml`, `.config/nerd-font-symbols.toml`
 - GTK/Qt theming: `.config/gtk-3.0/`, `.config/gtk-4.0/`, `.config/qt5ct/`,
