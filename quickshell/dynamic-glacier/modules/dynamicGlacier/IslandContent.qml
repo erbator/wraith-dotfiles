@@ -132,6 +132,9 @@ Item {
     property int clipboardHighlightIndex: 0
     property string clipboardStatusText: ""
 
+    property real timetableMorph: 0
+    readonly property real timetableContentHeight: timetableContent.contentHeight
+
     property var favoriteAppEntries: []
     property var favoriteAppIds: []
     property var appsPickerEntries: []
@@ -185,7 +188,7 @@ Item {
     readonly property int favoriteAppCount: root.favoriteAppIds.length
 
     // Only one panel morph is ever non-zero, so the peek can react to whichever is running.
-    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph, root.calcMorph, root.powerMorph, root.clipboardMorph)
+    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph, root.calcMorph, root.powerMorph, root.clipboardMorph, root.timetableMorph)
 
     // The peek stays mounted through the morph so it can fade/shrink into the panel.
     readonly property bool peekVisible: (root.mode === "idle" && root.forceExpanded) || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps"
@@ -228,6 +231,7 @@ Item {
     signal wallpaperHighlightNavRequested(int dx, int dy)
     signal wallpaperActivateRequested
     signal calcCloseRequested
+    signal timetableCloseRequested
     signal powerCloseRequested
     signal powerActionRequested(string action)
     signal clipboardCloseRequested
@@ -1243,6 +1247,16 @@ Item {
         fontFamily: root.fontFamily
         morph: root.calcMorph
         onCloseRequested: root.calcCloseRequested()
+        onSettingsRequested: root.glacierSettingsRequested()
+    }
+
+    TimetablePanel {
+        id: timetableContent
+
+        anchors.fill: parent
+        fontFamily: root.fontFamily
+        morph: root.timetableMorph
+        onCloseRequested: root.timetableCloseRequested()
         onSettingsRequested: root.glacierSettingsRequested()
     }
 

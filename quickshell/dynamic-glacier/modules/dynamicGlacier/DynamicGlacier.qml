@@ -137,6 +137,9 @@ Scope {
     readonly property int clipboardWidth: 420
     readonly property int clipboardMinHeight: 132
     readonly property int clipboardMaxPanelHeight: 420
+    readonly property int timetableWidth: 420
+    readonly property int timetableMinHeight: 132
+    readonly property int timetableMaxPanelHeight: 420
 
     // Clipboard history (morphs the island into mode "clipboard"). Backed by
     // cliphist — Qt's own clipboard API can't reliably see copies made by
@@ -317,6 +320,8 @@ Scope {
             return root.powerWidth;
         case "clipboard":
             return root.clipboardWidth;
+        case "timetable":
+            return root.timetableWidth;
         default:
             if (root.interactionOpen)
                 return root.exitPreviewActive ? Math.max(root.peekWidth, root.exitPreviewWidth) : root.peekWidth;
@@ -350,6 +355,8 @@ Scope {
             return root.powerMinHeight;
         case "clipboard":
             return root.clipboardMinHeight;
+        case "timetable":
+            return root.timetableMinHeight;
         default:
             if (root.interactionOpen)
                 return root.peekHeight;
@@ -377,7 +384,7 @@ Scope {
     function scheduleInteractionClose() {
         // Detail panels are hover-owned even when the idle island was pinned.
         // Keeping the pinned state only applies to the compact idle peek.
-        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || !root.pinnedOpen)
+        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || !root.pinnedOpen)
             hoverLeaveTimer.restart();
     }
 
@@ -1560,6 +1567,20 @@ Scope {
             root.applyWallpaper(entry.path);
     }
 
+    // Morphs the island into the timetable, or collapses it back to idle if
+    // it is already showing. Mirrors toggleCalculatorPanel.
+    function toggleTimetablePanel() {
+        if (root.mode === "timetable") {
+            root.showIdle();
+            return;
+        }
+
+        collapseTimer.stop();
+        root.exitPreviewActive = false;
+        root.mode = "timetable";
+        panelFocusGrab.active = true;
+    }
+
     // Morphs the island into the text calculator, or collapses it back to
     // idle if it is already showing. Mirrors toggleWallpaperPanel.
     function toggleCalculatorPanel() {
@@ -1851,7 +1872,7 @@ Scope {
         onTriggered: {
             root.pointerInside = false;
 
-            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard")
+            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable")
                 root.showIdle();
         }
     }
@@ -2417,7 +2438,7 @@ Scope {
         // Tall enough for the tallest expanded panel so the morph never clips.
         // The surface is transparent and input is limited to `mask`, so the extra
         // room costs nothing.
-        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 260, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32)
+        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 260, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32)
         visible: true
 
         // end-4 already enables compositor blur for `quickshell:*` surfaces.
@@ -2629,6 +2650,7 @@ Scope {
                 onClipboardDeleteRequested: raw => root.deleteClipboardEntry(raw)
                 onClipboardHighlightNavRequested: delta => root.moveClipboardHighlight(delta)
                 onClipboardActivateRequested: root.activateClipboardHighlight()
+                onTimetableCloseRequested: root.closePanelToWideIdle(root.timetableWidth)
                 onBtSettingsRequested: root.toggleBluetoothPanel()
                 onSeekRequested: position => root.mediaSeek(position)
                 onHandleStyleRequested: style => root.setHandleStyle(style)
@@ -2785,7 +2807,7 @@ Scope {
                 width: island.width
                 height: root.mode === "idle" && !root.interactionOpen ? Math.max(root.reservedZone, island.height) : island.height
                 hoverEnabled: true
-                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.visualMode === "calc" || root.visualMode === "power" || root.visualMode === "clipboard" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
+                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.visualMode === "calc" || root.visualMode === "power" || root.visualMode === "clipboard" || root.visualMode === "timetable" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
                 cursorShape: Qt.PointingHandCursor
                 onEntered: root.keepInteractionOpen(true)
                 onPositionChanged: mouse => root.maybeFinishExitPreview(mouse.x, width)
@@ -2834,7 +2856,7 @@ Scope {
         windows: [islandWindow]
 
         onCleared: {
-            if (root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard")
+            if (root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable")
                 root.showIdle();
         }
     }
@@ -2915,6 +2937,10 @@ Scope {
 
         function clipboard(): void {
             root.toggleClipboardPanel();
+        }
+
+        function timetable(): void {
+            root.toggleTimetablePanel();
         }
 
         function workspaceHint(id: string): void {

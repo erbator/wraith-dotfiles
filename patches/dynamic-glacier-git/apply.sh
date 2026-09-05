@@ -1,7 +1,8 @@
 #!/bin/sh
 # Reapplies the DynamicGlacier customizations (FiraCode Nerd Font, Super-tap
 # toggle IPC, arrow-key navigation in Apps and Wallpaper, the Wallpaper
-# switcher panel, and real DBus notification handling) after a fresh
+# switcher panel, the Calculator/Clipboard/Power-menu panels, the Órarend
+# (timetable) panel, and real DBus notification handling) after a fresh
 # `paru -S dynamic-glacier-git` install or reinstall.
 #
 # dynamic-glacier-git is pinned in /etc/pacman.conf (IgnorePkg) and

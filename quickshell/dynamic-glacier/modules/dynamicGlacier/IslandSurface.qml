@@ -88,6 +88,9 @@ Item {
     property real clipboardMorph: 0
     readonly property real clipboardPanelHeight: islandContent.clipboardContentHeight
 
+    property real timetableMorph: 0
+    readonly property real timetablePanelHeight: islandContent.timetableContentHeight
+
     // 0 = island, 1 = volume HUD. Same mechanism as the two panels above, so the
     // pill grows out of the handle instead of being painted on top of it.
     property real volumeMorph: 0
@@ -213,6 +216,7 @@ Item {
     signal clipboardDeleteRequested(string raw)
     signal clipboardHighlightNavRequested(int delta)
     signal clipboardActivateRequested
+    signal timetableCloseRequested
     signal btSettingsRequested
     signal seekRequested(real position)
     signal handleStyleRequested(string style)
@@ -410,7 +414,7 @@ Item {
             z: 10
             anchors.fill: parent
             // Padding relaxes to zero as a panel takes over — panels bring their own.
-            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.calcMorph) * (1 - root.powerMorph) * (1 - root.clipboardMorph) * (1 - root.volumeMorph) : 0
+            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.calcMorph) * (1 - root.powerMorph) * (1 - root.clipboardMorph) * (1 - root.timetableMorph) * (1 - root.volumeMorph) : 0
             wifiMorph: root.wifiMorph
             wifiMaxPanelHeight: root.wifiMaxPanelHeight
             btMorph: root.btMorph
@@ -423,6 +427,7 @@ Item {
             calcMorph: root.calcMorph
             powerMorph: root.powerMorph
             clipboardMorph: root.clipboardMorph
+            timetableMorph: root.timetableMorph
             volumeMorph: root.volumeMorph
             volumeKind: root.volumeKind
             mode: root.mode
@@ -569,6 +574,7 @@ Item {
             onClipboardDeleteRequested: raw => root.clipboardDeleteRequested(raw)
             onClipboardHighlightNavRequested: delta => root.clipboardHighlightNavRequested(delta)
             onClipboardActivateRequested: root.clipboardActivateRequested()
+            onTimetableCloseRequested: root.timetableCloseRequested()
             onBtSettingsRequested: root.btSettingsRequested()
             onSeekRequested: position => root.seekRequested(position)
             onHandleStyleRequested: style => root.handleStyleRequested(style)
@@ -578,7 +584,7 @@ Item {
     // Height is a plain binding, not part of the state, so it can re-target while
     // the morph is still running — the network list usually lands mid-transition,
     // and the app picker drawer opens long after the morph has settled.
-    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : (root.mode === "calc" ? Math.max(root.targetH, root.calcPanelHeight) : (root.mode === "power" ? Math.max(root.targetH, root.powerPanelHeight) : (root.mode === "clipboard" ? Math.max(root.targetH, root.clipboardPanelHeight) : root.targetH))))))))
+    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : (root.mode === "calc" ? Math.max(root.targetH, root.calcPanelHeight) : (root.mode === "power" ? Math.max(root.targetH, root.powerPanelHeight) : (root.mode === "clipboard" ? Math.max(root.targetH, root.clipboardPanelHeight) : (root.mode === "timetable" ? Math.max(root.targetH, root.timetablePanelHeight) : root.targetH)))))))))
 
     state: root.mode !== "idle" ? root.mode : (root.forceExpanded ? "peek" : "collapsed")
 
@@ -597,6 +603,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -614,6 +621,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -631,6 +639,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -648,6 +657,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -665,6 +675,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 1
             }
         },
@@ -682,6 +693,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -699,6 +711,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -716,6 +729,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -733,6 +747,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -750,6 +765,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -767,6 +783,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -784,6 +801,7 @@ Item {
                 root.calcMorph: 1
                 root.powerMorph: 0
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -801,6 +819,7 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 1
                 root.clipboardMorph: 0
+                root.timetableMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -818,6 +837,25 @@ Item {
                 root.calcMorph: 0
                 root.powerMorph: 0
                 root.clipboardMorph: 1
+                root.timetableMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "timetable"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.timetableMorph: 1
                 root.volumeMorph: 0
             }
         }
@@ -1150,6 +1188,41 @@ Item {
                 }
             }
         },
+        // Morph into the timetable. Same choreography as the other panels.
+        Transition {
+            to: "timetable"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+
+                NumberAnimation {
+                    property: "timetableMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "timetable"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "timetableMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
         // Volume HUD: the handle springs out sideways and the bar is already
         // there by the time the width settles, so the pill reads as one gesture
         // rather than a shape that fills in afterwards.
@@ -1196,7 +1269,7 @@ Item {
             }
 
             NumberAnimation {
-                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,calcMorph,powerMorph,clipboardMorph,volumeMorph"
+                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,calcMorph,powerMorph,clipboardMorph,timetableMorph,volumeMorph"
                 duration: 200
                 easing.type: Easing.OutCubic
             }

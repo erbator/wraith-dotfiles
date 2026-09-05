@@ -1,5 +1,779 @@
+diff --git a/quickshell/modules/dynamicGlacier/CalculatorPanel.qml b/quickshell/modules/dynamicGlacier/CalculatorPanel.qml
+new file mode 100644
+index 0000000..493e95d
+--- /dev/null
++++ b/quickshell/modules/dynamicGlacier/CalculatorPanel.qml
+@@ -0,0 +1,467 @@
++import QtQuick
++import QtQuick.Layouts
++
++Item {
++    id: root
++
++    property string fontFamily: "Noto Sans"
++    property real morph: 0
++
++    readonly property color primaryText: "#f7f7f7"
++    readonly property color secondaryText: "#777777"
++    readonly property color accentColor: "#4ade80"
++    readonly property int panelPadding: 16
++    readonly property int headerHeight: 32
++    readonly property int inputHeight: 40
++    readonly property int operatorRowHeight: 32
++    readonly property int resultHeight: 46
++    readonly property int sectionSpacing: 10
++    readonly property real contentHeight: root.panelPadding * 2 + root.headerHeight + root.sectionSpacing + root.inputHeight + root.sectionSpacing + root.operatorRowHeight + root.sectionSpacing + root.resultHeight
++    readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
++
++    // The displayed number tweens toward this on every valid keystroke, so
++    // the result visibly counts up/down instead of snapping.
++    property real displayValue: 0
++    property bool hasResult: false
++
++    readonly property var operatorTokens: [
++        { label: "√", insert: "sqrt(", after: ")" },
++        { label: "x²", insert: "^2", after: "" },
++        { label: "^", insert: "^", after: "" },
++        { label: "%", insert: "%", after: "" },
++        { label: "π", insert: " pi ", after: "" },
++        { label: "e", insert: " e ", after: "" },
++        { label: "n!", insert: "!", after: "" },
++        { label: "()", insert: "(", after: ")" }
++    ]
++
++    signal closeRequested
++    signal settingsRequested
++
++    opacity: root.panelProgress
++    visible: opacity > 0.001
++    scale: 0.94 + 0.06 * root.panelProgress
++    transformOrigin: Item.Top
++
++    Behavior on displayValue {
++        NumberAnimation { duration: 420; easing.type: Easing.OutCubic }
++    }
++
++    // Same reasoning as WallpaperPanel: this panel is instantiated once at
++    // startup, so Component.onCompleted would fire long before it's ever
++    // opened. Re-grab focus (and reset the expression) on every open instead.
++    onVisibleChanged: {
++        if (root.visible) {
++            calcInput.text = "";
++            calcInput.forceActiveFocus();
++            openKick.restart();
++        }
++    }
++
++    SequentialAnimation {
++        id: openKick
++
++        NumberAnimation { target: calcFocusScope; property: "scale"; from: 0.9; to: 1; duration: 320; easing.type: Easing.OutBack; easing.overshoot: 3 }
++    }
++
++    SequentialAnimation {
++        id: resultPopAnim
++
++        NumberAnimation { target: resultLabel; property: "scale"; to: 1.16; duration: 90; easing.type: Easing.OutCubic }
++        NumberAnimation { target: resultLabel; property: "scale"; to: 1; duration: 260; easing.type: Easing.OutBack; easing.overshoot: 1.6 }
++    }
++
++    // Accepts plain arithmetic, common English phrasing ("12 times 12",
++    // "12 divided by 12"), and a handful of scientific functions (sqrt, cbrt,
++    // log/ln, sin/cos/tan, abs, pi/e, n! factorial, ^ power). Word/function
++    // names are first mapped to unique @@TOKEN@@ placeholders — never plain
++    // "Math.xxx" text — so a later rule (e.g. the standalone "log" rule)
++    // can never re-match text an earlier rule already inserted. Only after
++    // every placeholder is swapped in does the whitelist check run, so
++    // nothing but digits/operators/parens/known-safe tokens ever reaches
++    // the evaluator. Anything not yet a complete, valid expression (mid-word,
++    // trailing operator, empty) just shows nothing, the same as Noctalia's
++    // inline calculator — no "Error"/"Unknown" flashing while typing.
++    function evaluate(raw) {
++        const trimmed = raw.trim();
++
++        if (trimmed === "")
++            return null;
++
++        let expr = (" " + trimmed.toLowerCase() + " ")
++            .replace(/\bto the power of\b/g, " @@POW@@ ")
++            .replace(/\bpower of\b/g, " @@POW@@ ")
++            .replace(/\bsquare root of\b/g, " @@SQRT@@")
++            .replace(/\bcube root of\b/g, " @@CBRT@@")
++            .replace(/\blog base 2 of\b/g, " @@LOG2@@")
++            .replace(/\blog base 10 of\b/g, " @@LOG10@@")
++            .replace(/\bnatural log of\b/g, " @@LN@@")
++            .replace(/\bmultiplied by\b/g, " * ")
++            .replace(/\bdivided by\b/g, " / ")
++            .replace(/\btimes\b/g, " * ")
++            .replace(/\binto\b/g, " * ")
++            .replace(/\bover\b/g, " / ")
++            .replace(/\bplus\b/g, " + ")
++            .replace(/\bminus\b/g, " - ")
++            .replace(/\bmod(?:ulo)?\b/g, " % ")
++            .replace(/\bsqrt\b/g, " @@SQRT@@")
++            .replace(/\bcbrt\b/g, " @@CBRT@@")
++            .replace(/\blog10\b/g, " @@LOG10@@")
++            .replace(/\blog2\b/g, " @@LOG2@@")
++            .replace(/\bln\b/g, " @@LN@@")
++            .replace(/\blog\b/g, " @@LOG10@@")
++            .replace(/\bsin\b/g, " @@SIN@@")
++            .replace(/\bcos\b/g, " @@COS@@")
++            .replace(/\btan\b/g, " @@TAN@@")
++            .replace(/\babs\b/g, " @@ABS@@")
++            .replace(/\bpi\b/g, " @@PI@@")
++            .replace(/\beuler\b/g, " @@E@@")
++            .replace(/\be\b/g, " @@E@@")
++            .replace(/\bx\b/g, " * ")
++            .replace(/\^/g, " @@POW@@ ")
++            .replace(/(\d),(\d)/g, "$1$2")
++            .replace(/(\d+(?:\.\d+)?)!/g, "@@FACT@@($1)")
++            .replace(/@@POW@@/g, "**")
++            .replace(/@@SQRT@@/g, "Math.sqrt")
++            .replace(/@@CBRT@@/g, "Math.cbrt")
++            .replace(/@@LOG10@@/g, "Math.log10")
++            .replace(/@@LOG2@@/g, "Math.log2")
++            .replace(/@@LN@@/g, "Math.log")
++            .replace(/@@SIN@@/g, "Math.sin")
++            .replace(/@@COS@@/g, "Math.cos")
++            .replace(/@@TAN@@/g, "Math.tan")
++            .replace(/@@ABS@@/g, "Math.abs")
++            .replace(/@@PI@@/g, "Math.PI")
++            .replace(/@@E@@/g, "Math.E")
++            .replace(/@@FACT@@/g, "fact");
++
++        if (!root.isSafeExpression(expr))
++            return null;
++
++        try {
++            const value = Function("fact", '"use strict"; return (' + expr + ')')(root.factorial);
++
++            return typeof value === "number" && isFinite(value) ? value : null;
++        } catch (error) {
++            return null;
++        }
++    }
++
++    // Strips every known-safe token (all of them literal, all inserted only
++    // by this file) out of a copy of the expression; whatever is left must
++    // be nothing but digits/operators/parens/commas, or the real expression
++    // never reaches Function().
++    function isSafeExpression(expr) {
++        const allowedTokens = ["Math.sqrt", "Math.cbrt", "Math.log10", "Math.log2", "Math.log", "Math.sin", "Math.cos", "Math.tan", "Math.abs", "Math.PI", "Math.E", "fact"];
++        let stripped = expr;
++
++        for (const token of allowedTokens)
++            stripped = stripped.split(token).join("");
++
++        return /^[\s0-9+\-*/%.(),]*$/.test(stripped);
++    }
++
++    function factorial(n) {
++        const value = Math.floor(n);
++
++        if (value < 0 || value > 170)
++            return NaN;
++
++        let result = 1;
++
++        for (let i = 2; i <= value; i++)
++            result *= i;
++
++        return result;
++    }
++
++    function formatNumber(value) {
++        if (Number.isInteger(value))
++            return String(value);
++
++        return String(Math.round(value * 1e8) / 1e8);
++    }
++
++    function recompute(text) {
++        const value = root.evaluate(text);
++
++        if (value === null) {
++            root.hasResult = false;
++            return;
++        }
++
++        root.hasResult = true;
++        root.displayValue = value;
++        resultPopAnim.restart();
++    }
++
++    function insertOperator(item) {
++        const pos = calcInput.cursorPosition;
++        const text = calcInput.text;
++
++        calcInput.text = text.slice(0, pos) + item.insert + item.after + text.slice(pos);
++        calcInput.cursorPosition = pos + item.insert.length;
++        calcInput.forceActiveFocus();
++    }
++
++    FocusScope {
++        id: calcFocusScope
++
++        anchors.fill: parent
++        focus: true
++        transformOrigin: Item.Center
++
++        Keys.onEscapePressed: root.closeRequested()
++
++        ColumnLayout {
++            anchors.fill: parent
++            anchors.margins: root.panelPadding
++            spacing: root.sectionSpacing
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.headerHeight
++                spacing: 10
++
++                Rectangle {
++                    id: iconBadge
++
++                    Layout.preferredWidth: root.headerHeight
++                    Layout.preferredHeight: root.headerHeight
++                    radius: 11
++                    color: "#090909"
++                    border.width: 1
++                    border.color: "#232323"
++
++                    // A slow, subtle breathing pulse so the panel feels alive
++                    // rather than static while it's sitting open.
++                    SequentialAnimation on scale {
++                        running: root.visible
++                        loops: Animation.Infinite
++
++                        NumberAnimation { to: 1.08; duration: 900; easing.type: Easing.InOutSine }
++                        NumberAnimation { to: 1; duration: 900; easing.type: Easing.InOutSine }
++                    }
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "calculate"
++                        size: 15
++                        color: root.primaryText
++                    }
++                }
++
++                Text {
++                    Layout.fillWidth: true
++                    text: "Calculator"
++                    color: root.primaryText
++                    elide: Text.ElideRight
++                    font.family: root.fontFamily
++                    font.pixelSize: 15
++                    font.weight: Font.Bold
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: settingsMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++                    scale: settingsMouse.pressed ? 0.86 : (settingsMouse.containsMouse ? 1.1 : 1)
++
++                    Behavior on scale {
++                        NumberAnimation { duration: 140; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
++                    }
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "settings"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: settingsMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.settingsRequested()
++                    }
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: closeMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++                    scale: closeMouse.pressed ? 0.86 : (closeMouse.containsMouse ? 1.1 : 1)
++
++                    Behavior on scale {
++                        NumberAnimation { duration: 140; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
++                    }
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "close"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: closeMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.closeRequested()
++                    }
++                }
++            }
++
++            Item {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.inputHeight
++
++                Rectangle {
++                    id: inputBox
++
++                    anchors.fill: parent
++                    radius: 12
++                    color: "#0a0a0a"
++                    border.width: 1
++                    border.color: calcInput.activeFocus ? "#3a3a3a" : "#232323"
++
++                    Behavior on border.color {
++                        ColorAnimation { duration: 180 }
++                    }
++                }
++
++                // A soft glow ring that breathes around the input while it
++                // holds a valid result — the "something landed" heartbeat.
++                Rectangle {
++                    anchors.fill: inputBox
++                    radius: inputBox.radius
++                    color: "transparent"
++                    border.width: 1
++                    border.color: root.accentColor
++                    visible: root.hasResult
++                    opacity: 0
++
++                    SequentialAnimation on opacity {
++                        running: root.hasResult
++                        loops: Animation.Infinite
++
++                        NumberAnimation { to: 0.55; duration: 900; easing.type: Easing.InOutSine }
++                        NumberAnimation { to: 0.12; duration: 900; easing.type: Easing.InOutSine }
++                    }
++                }
++
++                TextInput {
++                    id: calcInput
++
++                    anchors.fill: parent
++                    anchors.leftMargin: 12
++                    anchors.rightMargin: 12
++                    verticalAlignment: Text.AlignVCenter
++                    color: root.primaryText
++                    font.family: root.fontFamily
++                    font.pixelSize: 14
++                    clip: true
++                    selectByMouse: true
++
++                    onTextChanged: root.recompute(text)
++                    // Chain further calculations off the last answer.
++                    onAccepted: {
++                        if (root.hasResult)
++                            calcInput.text = root.formatNumber(root.displayValue);
++                    }
++
++                    Text {
++                        anchors.verticalCenter: parent.verticalCenter
++                        text: "12 times 12"
++                        color: "#5f5f5f"
++                        font.family: root.fontFamily
++                        font.pixelSize: 14
++                        visible: calcInput.text.length === 0
++                    }
++                }
++            }
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.operatorRowHeight
++                spacing: 6
++
++                Repeater {
++                    model: root.operatorTokens
++
++                    Rectangle {
++                        id: opTile
++
++                        required property var modelData
++
++                        Layout.fillWidth: true
++                        Layout.fillHeight: true
++                        radius: 8
++                        color: opMouse.containsMouse ? "#161616" : "#0a0a0a"
++                        border.width: 1
++                        border.color: "#232323"
++                        scale: opMouse.pressed ? 0.84 : (opMouse.containsMouse ? 1.08 : 1)
++
++                        Behavior on scale {
++                            NumberAnimation { duration: 130; easing.type: Easing.OutBack; easing.overshoot: 2.6 }
++                        }
++
++                        Text {
++                            anchors.centerIn: parent
++                            text: opTile.modelData.label
++                            color: root.primaryText
++                            font.family: root.fontFamily
++                            font.pixelSize: 12
++                            font.weight: Font.DemiBold
++                        }
++
++                        MouseArea {
++                            id: opMouse
++
++                            anchors.fill: parent
++                            hoverEnabled: true
++                            cursorShape: Qt.PointingHandCursor
++                            onClicked: root.insertOperator(opTile.modelData)
++                        }
++                    }
++                }
++            }
++
++            Item {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.resultHeight
++
++                Text {
++                    id: resultLabel
++
++                    anchors.fill: parent
++                    verticalAlignment: Text.AlignVCenter
++                    horizontalAlignment: Text.AlignRight
++                    elide: Text.ElideLeft
++                    text: root.hasResult ? "= " + root.formatNumber(root.displayValue) : ""
++                    color: root.accentColor
++                    font.family: root.fontFamily
++                    font.pixelSize: 28
++                    font.weight: Font.Bold
++                    transformOrigin: Item.Right
++
++                    Behavior on opacity {
++                        NumberAnimation { duration: 160 }
++                    }
++
++                    opacity: root.hasResult ? 1 : 0
++                }
++            }
++        }
++    }
++}
+diff --git a/quickshell/modules/dynamicGlacier/ClipboardPanel.qml b/quickshell/modules/dynamicGlacier/ClipboardPanel.qml
+new file mode 100644
+index 0000000..0b09ade
+--- /dev/null
++++ b/quickshell/modules/dynamicGlacier/ClipboardPanel.qml
+@@ -0,0 +1,295 @@
++import QtQuick
++import QtQuick.Layouts
++
++Item {
++    id: root
++
++    property var entries: []
++    property int highlightIndex: 0
++    property string statusText: ""
++    property string fontFamily: "Noto Sans"
++    property real morph: 0
++
++    readonly property color primaryText: "#f7f7f7"
++    readonly property color secondaryText: "#777777"
++    readonly property int panelPadding: 16
++    readonly property int headerHeight: 32
++    readonly property int footerHeight: 20
++    readonly property int sectionSpacing: 10
++    readonly property int rowHeight: 40
++    readonly property int rowSpacing: 6
++    // Capped in whole rows, same reasoning as WallpaperPanel: a mid-row clip
++    // chops the last visible row instead of just scrolling it off.
++    readonly property int maxVisibleRows: 6
++    readonly property int visibleRows: Math.max(1, Math.min(root.maxVisibleRows, root.entries.length))
++    readonly property int listHeight: root.visibleRows * root.rowHeight + Math.max(0, root.visibleRows - 1) * root.rowSpacing
++    readonly property real contentHeight: root.panelPadding * 2 + root.headerHeight + root.sectionSpacing + root.listHeight + root.sectionSpacing + root.footerHeight
++    readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
++
++    signal closeRequested
++    signal refreshRequested
++    signal clearRequested
++    signal applyRequested(string raw)
++    signal deleteRequested(string raw)
++    signal highlightNavRequested(int delta)
++    signal activateRequested
++
++    opacity: root.panelProgress
++    visible: opacity > 0.001
++    scale: 0.94 + 0.06 * root.panelProgress
++    transformOrigin: Item.Top
++
++    // Same reasoning as WallpaperPanel: instantiated once at startup, so
++    // Component.onCompleted would fire long before this ever opens. Re-grab
++    // focus (and pull a fresh list) on every open instead.
++    onVisibleChanged: {
++        if (root.visible) {
++            clipboardFocusScope.forceActiveFocus();
++            root.refreshRequested();
++        }
++    }
++
++    FocusScope {
++        id: clipboardFocusScope
++
++        anchors.fill: parent
++        focus: true
++
++        Keys.onUpPressed: root.highlightNavRequested(-1)
++        Keys.onDownPressed: root.highlightNavRequested(1)
++        Keys.onReturnPressed: {
++            console.log("CLIP_DEBUG: Return pressed, highlightIndex=" + root.highlightIndex + " entries=" + root.entries.length);
++            root.activateRequested();
++        }
++        Keys.onEnterPressed: root.activateRequested()
++        Keys.onEscapePressed: root.closeRequested()
++
++        ColumnLayout {
++            anchors.fill: parent
++            anchors.margins: root.panelPadding
++            spacing: root.sectionSpacing
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.headerHeight
++                spacing: 10
++
++                Rectangle {
++                    Layout.preferredWidth: root.headerHeight
++                    Layout.preferredHeight: root.headerHeight
++                    radius: 11
++                    color: "#090909"
++                    border.width: 1
++                    border.color: "#232323"
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "content_paste"
++                        size: 15
++                        color: root.primaryText
++                    }
++                }
++
++                ColumnLayout {
++                    Layout.fillWidth: true
++                    spacing: 0
++
++                    Text {
++                        Layout.fillWidth: true
++                        text: "Clipboard"
++                        color: root.primaryText
++                        elide: Text.ElideRight
++                        font.family: root.fontFamily
++                        font.pixelSize: 15
++                        font.weight: Font.Bold
++                    }
++
++                    Text {
++                        Layout.fillWidth: true
++                        text: root.statusText !== "" ? root.statusText : (root.entries.length + (root.entries.length === 1 ? " item" : " items"))
++                        color: root.statusText !== "" ? "#f0736a" : root.secondaryText
++                        elide: Text.ElideRight
++                        font.family: root.fontFamily
++                        font.pixelSize: 11
++                        font.weight: Font.DemiBold
++                    }
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: clearMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++                    scale: clearMouse.pressed ? 0.86 : (clearMouse.containsMouse ? 1.1 : 1)
++
++                    Behavior on scale {
++                        NumberAnimation { duration: 140; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
++                    }
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "delete_sweep"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: clearMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.clearRequested()
++                    }
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: closeMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++                    scale: closeMouse.pressed ? 0.86 : (closeMouse.containsMouse ? 1.1 : 1)
++
++                    Behavior on scale {
++                        NumberAnimation { duration: 140; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
++                    }
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "close"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: closeMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.closeRequested()
++                    }
++                }
++            }
++
++            Item {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.listHeight
++                Layout.maximumHeight: root.listHeight
++                clip: true
++
++                Text {
++                    anchors.centerIn: parent
++                    text: "Nothing copied yet"
++                    color: root.secondaryText
++                    visible: root.entries.length === 0
++                    font.family: root.fontFamily
++                    font.pixelSize: 12
++                    font.weight: Font.DemiBold
++                }
++
++                ListView {
++                    id: clipboardList
++
++                    anchors.fill: parent
++                    visible: root.entries.length > 0
++                    model: root.entries
++                    spacing: root.rowSpacing
++                    clip: true
++                    interactive: contentHeight > height
++                    boundsBehavior: Flickable.StopAtBounds
++                    cacheBuffer: 400
++                    currentIndex: root.highlightIndex
++
++                    delegate: Rectangle {
++                        id: clipRow
++
++                        required property var modelData
++                        required property int index
++
++                        readonly property bool keyHighlighted: clipRow.ListView.isCurrentItem
++
++                        width: ListView.view.width
++                        height: root.rowHeight
++                        radius: 10
++                        color: clipRow.keyHighlighted ? "#141414" : (rowMouse.containsMouse ? "#101010" : "#0a0a0a")
++                        border.width: 1
++                        border.color: clipRow.keyHighlighted ? "#f0f0f0" : "#202020"
++
++                        RowLayout {
++                            anchors.fill: parent
++                            anchors.leftMargin: 10
++                            anchors.rightMargin: 8
++                            spacing: 8
++
++                            Text {
++                                Layout.fillWidth: true
++                                text: clipRow.modelData.preview
++                                color: clipRow.keyHighlighted ? root.primaryText : "#c8c8c8"
++                                elide: Text.ElideRight
++                                font.family: root.fontFamily
++                                font.pixelSize: 11
++                                font.weight: Font.DemiBold
++                            }
++
++                            Rectangle {
++                                Layout.preferredWidth: 18
++                                Layout.preferredHeight: 18
++                                radius: 9
++                                color: rowDeleteMouse.containsMouse ? "#241414" : "transparent"
++
++                                MIcon {
++                                    anchors.centerIn: parent
++                                    name: "close"
++                                    size: 10
++                                    color: rowDeleteMouse.containsMouse ? "#f0736a" : "#6f6f6f"
++                                }
++
++                                MouseArea {
++                                    id: rowDeleteMouse
++
++                                    anchors.fill: parent
++                                    hoverEnabled: true
++                                    cursorShape: Qt.PointingHandCursor
++                                    onClicked: root.deleteRequested(clipRow.modelData.raw)
++                                }
++                            }
++                        }
++
++                        MouseArea {
++                            id: rowMouse
++
++                            anchors.fill: parent
++                            hoverEnabled: true
++                            cursorShape: Qt.PointingHandCursor
++                            z: -1
++                            onClicked: {
++                                console.log("CLIP_DEBUG: row clicked, raw=[" + clipRow.modelData.raw + "]");
++                                root.applyRequested(clipRow.modelData.raw);
++                            }
++                        }
++                    }
++                }
++            }
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.footerHeight
++
++                Text {
++                    Layout.fillWidth: true
++                    text: "Click an entry to copy it again"
++                    color: "#606060"
++                    elide: Text.ElideRight
++                    font.family: root.fontFamily
++                    font.pixelSize: 10
++                    font.weight: Font.DemiBold
++                }
++            }
++        }
++    }
++}
 diff --git a/quickshell/modules/dynamicGlacier/DynamicGlacier.qml b/quickshell/modules/dynamicGlacier/DynamicGlacier.qml
-index 27445c9..082d66b 100644
+index 27445c9..0934774 100644
 --- a/quickshell/modules/dynamicGlacier/DynamicGlacier.qml
 +++ b/quickshell/modules/dynamicGlacier/DynamicGlacier.qml
 @@ -5,6 +5,7 @@ import Quickshell.Bluetooth
@@ -10,7 +784,7 @@ index 27445c9..082d66b 100644
  import Quickshell.Services.Pipewire
  import Quickshell.Services.UPower
  import Quickshell.Wayland
-@@ -123,7 +124,11 @@ Scope {
+@@ -123,7 +124,39 @@ Scope {
      readonly property int appsWidth: 340
      readonly property int appsMinHeight: 132
      readonly property int appsMaxPanelHeight: 470
@@ -19,11 +793,67 @@ index 27445c9..082d66b 100644
 +    readonly property int wallpaperMinHeight: 132
 +    readonly property int wallpaperMaxPanelHeight: 420
 +    readonly property int wallpaperGridColumns: 3
-+    readonly property string fontFamily: "FiraCode Nerd Font"
++    readonly property int calcWidth: 360
++    readonly property int calcMinHeight: 132
++    readonly property int calcMaxPanelHeight: 230
++    readonly property int powerWidth: 380
++    readonly property int powerMinHeight: 132
++    readonly property int powerMaxPanelHeight: 210
++    readonly property int clipboardWidth: 420
++    readonly property int clipboardMinHeight: 132
++    readonly property int clipboardMaxPanelHeight: 420
++    readonly property int timetableWidth: 420
++    readonly property int timetableMinHeight: 132
++    readonly property int timetableMaxPanelHeight: 420
++
++    // Clipboard history (morphs the island into mode "clipboard"). Backed by
++    // cliphist — Qt's own clipboard API can't reliably see copies made by
++    // other apps while unfocused on Wayland; cliphist watches via the
++    // wlr-data-control protocol through a `wl-paste --watch` daemon started
++    // in autostart.lua.
++    property var clipboardEntries: []
++    property int clipboardHighlightIndex: 0
++    property string clipboardStatusText: ""
++    property string fontFamily: "Hack Nerd Font Mono"
++    readonly property var fontOptions: [
++        "FiraCode Nerd Font Mono",
++        "Hack Nerd Font Mono",
++        "SFMono Nerd Font Mono",
++        "CaskaydiaCove Nerd Font Mono",
++        "MesloLGM Nerd Font Mono"
++    ]
      readonly property var audioSink: Pipewire.defaultAudioSink
      readonly property bool mediaCanGoPrevious: root.activePlayer?.canGoPrevious ?? false
      readonly property bool mediaCanTogglePlaying: (root.activePlayer?.canTogglePlaying ?? false) || (root.activePlayer?.canPause ?? false) || (root.activePlayer?.canPlay ?? false)
-@@ -213,6 +218,7 @@ Scope {
+@@ -145,6 +178,27 @@ Scope {
+     readonly property string batteryHoverText: root.batteryAvailable() ? (root.batteryPluggedIn() ? "CHG " : "BAT ") + root.batteryLevel() + "%" : ""
+     readonly property string hoverTimeText: root.formatClockTime(root.currentDateTime)
+     readonly property string hoverDateText: root.formatClockDate(root.currentDateTime)
++
++    // Workspace-switch indicator: briefly swaps the clock for a dot row
++    // (see WorkspaceDots.qml) highlighting the workspace just switched to.
++    // Hyprland.focusedMonitor.activeWorkspace is a live Quickshell IPC
++    // object — this recomputes on its own for every switch, whatever
++    // triggered it (keybind, scroll, mouse), no external listener needed.
++    property int workspaceIndicatorId: 0
++    readonly property int workspaceIndicatorCount: 4
++    // Skips the very first resolution at startup (0 -> initial workspace),
++    // so the dots don't flash once on login before anything switched.
++    property bool workspaceIndicatorPrimed: false
++    readonly property int hyprlandActiveWorkspaceId: Hyprland.focusedMonitor?.activeWorkspace?.id ?? 0
++
++    onHyprlandActiveWorkspaceIdChanged: {
++        if (!root.workspaceIndicatorPrimed) {
++            root.workspaceIndicatorPrimed = true;
++            return;
++        }
++
++        root.showWorkspaceIndicator(root.hyprlandActiveWorkspaceId);
++    }
+     readonly property bool mediaAvailable: root.liveLinksEnabled && root.hasActiveMedia()
+     readonly property bool mediaCanSeek: (root.activePlayer?.canSeek ?? false) && (root.activePlayer?.positionSupported ?? false) && root.mediaLength > 0
+ 
+@@ -213,6 +267,7 @@ Scope {
  
      // App favorites dock (morphs the island into mode "apps")
      readonly property int appsFavoriteSlots: 8
@@ -31,7 +861,7 @@ index 27445c9..082d66b 100644
      readonly property string favoritesPath: Quickshell.statePath("favorites.json")
      readonly property string visualSettingsPath: Quickshell.statePath("settings.json")
      readonly property string favoritesDir: root.parentDirectory(root.favoritesPath)
-@@ -220,12 +226,25 @@ Scope {
+@@ -220,12 +275,25 @@ Scope {
      property bool appsPickerOpen: false
      property string appsSearchDraft: ""
      property string appsStatusText: ""
@@ -57,34 +887,50 @@ index 27445c9..082d66b 100644
      function targetWidth() {
          switch (root.visualMode) {
          case "notify":
-@@ -244,6 +263,8 @@ Scope {
+@@ -244,6 +312,16 @@ Scope {
              return root.settingsWidth;
          case "apps":
              return root.appsWidth;
 +        case "wallpaper":
 +            return root.wallpaperWidth;
++        case "calc":
++            return root.calcWidth;
++        case "power":
++            return root.powerWidth;
++        case "clipboard":
++            return root.clipboardWidth;
++        case "timetable":
++            return root.timetableWidth;
          default:
              if (root.interactionOpen)
                  return root.exitPreviewActive ? Math.max(root.peekWidth, root.exitPreviewWidth) : root.peekWidth;
-@@ -269,6 +290,8 @@ Scope {
+@@ -269,6 +347,16 @@ Scope {
              return root.settingsMinHeight;
          case "apps":
              return root.appsMinHeight;
 +        case "wallpaper":
 +            return root.wallpaperMinHeight;
++        case "calc":
++            return root.calcMinHeight;
++        case "power":
++            return root.powerMinHeight;
++        case "clipboard":
++            return root.clipboardMinHeight;
++        case "timetable":
++            return root.timetableMinHeight;
          default:
              if (root.interactionOpen)
                  return root.peekHeight;
-@@ -296,7 +319,7 @@ Scope {
+@@ -296,7 +384,7 @@ Scope {
      function scheduleInteractionClose() {
          // Detail panels are hover-owned even when the idle island was pinned.
          // Keeping the pinned state only applies to the compact idle peek.
 -        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || !root.pinnedOpen)
-+        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || !root.pinnedOpen)
++        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || !root.pinnedOpen)
              hoverLeaveTimer.restart();
      }
  
-@@ -342,6 +365,7 @@ Scope {
+@@ -342,6 +430,7 @@ Scope {
  
      function showIdle(preserveExitPreview) {
          const keepExitPreview = preserveExitPreview === true;
@@ -92,7 +938,7 @@ index 27445c9..082d66b 100644
  
          if (root.mode === "bluetooth" && root.btAdapter?.discovering)
              root.btAdapter.discovering = false;
-@@ -349,6 +373,7 @@ Scope {
+@@ -349,6 +438,7 @@ Scope {
          collapseTimer.stop();
          root.mode = "idle";
          root.pinnedOpen = false;
@@ -100,7 +946,7 @@ index 27445c9..082d66b 100644
          if (!keepExitPreview)
              root.exitPreviewActive = false;
          root.title = "Ready";
-@@ -363,6 +388,12 @@ Scope {
+@@ -363,6 +453,12 @@ Scope {
          root.wifiPasswordDraft = "";
          root.wifiStatusText = "";
          root.btStatusText = "";
@@ -113,7 +959,26 @@ index 27445c9..082d66b 100644
  
          if (root.liveLinksEnabled) {
              root.chooseActivePlayer(null);
-@@ -433,13 +464,42 @@ Scope {
+@@ -408,6 +504,14 @@ Scope {
+         root.saveVisualSettings();
+     }
+ 
++    function setFontFamily(family) {
++        if (root.fontOptions.indexOf(family) === -1)
++            return;
++
++        root.fontFamily = family;
++        root.saveVisualSettings();
++    }
++
+     function setIdleWidth(width) {
+         const numericWidth = Number(width);
+ 
+@@ -430,16 +534,46 @@ Scope {
+         root.liquidGlassEnabled = false;
+         root.peekWidth = 340;
+         root.peekHeight = 132;
++        root.fontFamily = root.fontOptions[1];
          root.saveVisualSettings();
      }
  
@@ -158,7 +1023,7 @@ index 27445c9..082d66b 100644
      }
  
      function showMedia(trackTitle, trackArtist, isPlaying, trackArtUrl) {
-@@ -1329,12 +1389,104 @@ Scope {
+@@ -1329,12 +1463,266 @@ Scope {
          root.appsPickerOpen = false;
          root.appsSearchDraft = "";
          root.appsStatusText = "";
@@ -215,7 +1080,11 @@ index 27445c9..082d66b 100644
 +        root.wallpaperApplying = true;
 +        root.wallpaperStatusText = "";
 +        wallpaperApplyProc.pendingPath = path;
-+        wallpaperApplyProc.exec(["awww", "img", path, "--transition-type", "grow", "--transition-duration", "0.6", "--transition-fps", "60"]);
++        // "crop" fills the screen edge-to-edge with no letterbox bars,
++        // cropping whatever doesn't fit. "fit" (tried earlier) shows the
++        // whole image but adds black bars whenever the aspect ratio
++        // doesn't match the screen — not wanted here.
++        wallpaperApplyProc.exec(["awww", "img", path, "--resize", "crop", "--transition-type", "grow", "--transition-duration", "0.6", "--transition-fps", "60"]);
 +    }
 +
 +    function onWallpaperApplyFinished(path, success) {
@@ -260,10 +1129,168 @@ index 27445c9..082d66b 100644
 +
 +        if (entry)
 +            root.applyWallpaper(entry.path);
++    }
++
++    // Morphs the island into the timetable, or collapses it back to idle if
++    // it is already showing. Mirrors toggleCalculatorPanel.
++    function toggleTimetablePanel() {
++        if (root.mode === "timetable") {
++            root.showIdle();
++            return;
++        }
++
++        collapseTimer.stop();
++        root.exitPreviewActive = false;
++        root.mode = "timetable";
++        panelFocusGrab.active = true;
++    }
++
++    // Morphs the island into the text calculator, or collapses it back to
++    // idle if it is already showing. Mirrors toggleWallpaperPanel.
++    function toggleCalculatorPanel() {
++        if (root.mode === "calc") {
++            root.showIdle();
++            return;
++        }
++
++        collapseTimer.stop();
++        root.exitPreviewActive = false;
++        root.mode = "calc";
++        panelFocusGrab.active = true;
++    }
++
++    // Morphs the island into the power menu, or collapses it back to idle
++    // if it is already showing. Mirrors toggleCalculatorPanel.
++    function toggleLogoutPanel() {
++        if (root.mode === "power") {
++            root.showIdle();
++            return;
++        }
++
++        collapseTimer.stop();
++        root.exitPreviewActive = false;
++        root.mode = "power";
++        panelFocusGrab.active = true;
++    }
++
++    // Every actual system command lives here, not in PowerMenuPanel.qml,
++    // so the destructive ones are all in one auditable place. The panel
++    // only ever emits an action id after its own hold-to-confirm gesture.
++    function performPowerAction(action) {
++        switch (action) {
++        case "lock":
++            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/share/quickshell-lockscreen/lock.sh"]);
++            break;
++        case "logout":
++            Quickshell.execDetached(["uwsm", "stop"]);
++            break;
++        case "suspend":
++            Quickshell.execDetached(["systemctl", "suspend"]);
++            break;
++        case "reboot":
++            Quickshell.execDetached(["systemctl", "reboot"]);
++            break;
++        case "shutdown":
++            Quickshell.execDetached(["systemctl", "poweroff"]);
++            break;
++        }
++
++        root.showIdle();
++    }
++
++    // Morphs the island into the clipboard history, or collapses it back to
++    // idle if it is already showing. Mirrors toggleWallpaperPanel. Always
++    // rescans on open (unlike wallpaper's lazy first-scan) since clipboard
++    // content goes stale fast.
++    function toggleClipboardPanel() {
++        if (root.mode === "clipboard") {
++            root.showIdle();
++            return;
++        }
++
++        collapseTimer.stop();
++        root.exitPreviewActive = false;
++        root.mode = "clipboard";
++        root.clipboardStatusText = "";
++        root.clipboardHighlightIndex = 0;
++        panelFocusGrab.active = true;
++        root.scanClipboardHistory();
++    }
++
++    function scanClipboardHistory() {
++        clipboardScanProc.exec(["cliphist", "list"]);
++    }
++
++    function parseClipboardEntries(text) {
++        const lines = text.split("\n").filter(line => line.trim() !== "");
++
++        root.clipboardEntries = lines.map(line => {
++            const tabIndex = line.indexOf("\t");
++            const preview = tabIndex !== -1 ? line.slice(tabIndex + 1) : line;
++
++            return { raw: line, preview: preview };
++        });
++
++        root.clipboardHighlightIndex = root.clampIndex(root.clipboardHighlightIndex, root.clipboardEntries.length);
++    }
++
++    // cliphist decode/delete need the *exact* line cliphist list printed
++    // (id + tab + preview) fed back to them, and that line can contain
++    // absolutely anything the user ever copied — including shell
++    // metacharacters like $(...) or `...`. Passing it through the
++    // subprocess's environment and referencing it as "$VAR" (not
++    // interpolating it into the command string) means the shell only ever
++    // substitutes the variable once and never re-parses its contents, so
++    // nothing in a malicious clipboard entry can execute.
++    function runClipboardLineCommand(raw, shellPipeline) {
++        clipboardLineProc.environment = { "CLIPHIST_LINE": raw };
++        clipboardLineProc.exec(["sh", "-c", shellPipeline]);
++    }
++
++    function applyClipboardEntry(raw) {
++        if (raw === "")
++            return;
++
++        root.runClipboardLineCommand(raw, 'printf \'%s\' "$CLIPHIST_LINE" | cliphist decode | wl-copy');
++        root.showIdle();
++    }
++
++    function deleteClipboardEntry(raw) {
++        if (raw === "")
++            return;
++
++        clipboardLineProc.pendingRescan = true;
++        root.runClipboardLineCommand(raw, 'printf \'%s\' "$CLIPHIST_LINE" | cliphist delete');
++    }
++
++    function clearClipboardHistory() {
++        clipboardWipeProc.exec(["cliphist", "wipe"]);
++    }
++
++    function moveClipboardHighlight(delta) {
++        root.clipboardHighlightIndex = root.clampIndex(root.clipboardHighlightIndex + delta, root.clipboardEntries.length);
++    }
++
++    function activateClipboardHighlight() {
++        const entry = root.clipboardEntries[root.clipboardHighlightIndex];
++
++        if (entry)
++            root.applyClipboardEntry(entry.raw);
++    }
++
++    // Briefly swaps the idle clock for a dot row highlighting the workspace
++    // just switched to, then reverts. Ignores ids outside the dot count
++    // (workspaces 5-10 live on the secondary monitor, per binds.lua).
++    function showWorkspaceIndicator(id) {
++        if (id < 1 || id > root.workspaceIndicatorCount)
++            return;
++
++        root.workspaceIndicatorId = id;
++        workspaceIndicatorTimer.restart();
      }
  
      function toggleFavoriteApp(id) {
-@@ -1369,15 +1521,56 @@ Scope {
+@@ -1369,15 +1757,56 @@ Scope {
          root.showIdle();
      }
  
@@ -325,19 +1352,47 @@ index 27445c9..082d66b 100644
      }
  
      function applyFavoritesJson(text) {
-@@ -1439,7 +1632,7 @@ Scope {
+@@ -1402,6 +1831,9 @@ Scope {
+             root.liquidGlassEnabled = parsed.liquidGlassEnabled === true;
+             root.peekWidth = Math.max(300, Math.min(520, Math.round((Number(parsed.idleWidth) || 340) / 10) * 10));
+             root.peekHeight = Math.max(112, Math.min(180, Math.round((Number(parsed.idleHeight) || 132) / 4) * 4));
++
++            if (root.fontOptions.indexOf(parsed.fontFamily) !== -1)
++                root.fontFamily = parsed.fontFamily;
+         } catch (error) {
+             // Keep the built-in defaults if the file is empty or hand-edited
+             // into invalid JSON. The next UI change rewrites a valid file.
+@@ -1418,7 +1850,8 @@ Scope {
+             handleStyle: root.handleStyle,
+             liquidGlassEnabled: root.liquidGlassEnabled,
+             idleWidth: root.peekWidth,
+-            idleHeight: root.peekHeight
++            idleHeight: root.peekHeight,
++            fontFamily: root.fontFamily
+         }, null, 2) + "\n");
+     }
+ 
+@@ -1439,7 +1872,7 @@ Scope {
          onTriggered: {
              root.pointerInside = false;
  
 -            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps")
-+            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper")
++            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable")
                  root.showIdle();
          }
      }
-@@ -1837,6 +2030,39 @@ Scope {
+@@ -1837,6 +2270,77 @@ Scope {
          }
      }
  
++    Timer {
++        id: workspaceIndicatorTimer
++
++        interval: 900
++        repeat: false
++        onTriggered: root.workspaceIndicatorId = 0
++    }
++
 +    Process {
 +        id: wallpaperDirProc
 +
@@ -351,6 +1406,36 @@ index 27445c9..082d66b 100644
 +        stdout: StdioCollector {
 +            onStreamFinished: root.parseWallpaperEntries(text)
 +        }
++    }
++
++    Process {
++        id: clipboardScanProc
++
++        stdout: StdioCollector {
++            onStreamFinished: root.parseClipboardEntries(text)
++        }
++    }
++
++    Process {
++        id: clipboardLineProc
++
++        // Set true before a delete so onExited knows to refresh the list;
++        // left false for an apply, which closes the panel immediately and
++        // picks up a fresh list on the next open anyway.
++        property bool pendingRescan: false
++
++        onExited: {
++            if (clipboardLineProc.pendingRescan) {
++                clipboardLineProc.pendingRescan = false;
++                root.scanClipboardHistory();
++            }
++        }
++    }
++
++    Process {
++        id: clipboardWipeProc
++
++        onExited: root.scanClipboardHistory()
 +    }
 +
 +    Process {
@@ -374,16 +1459,33 @@ index 27445c9..082d66b 100644
      Timer {
          id: visualSettingsInitialSaveTimer
  
-@@ -1934,7 +2160,7 @@ Scope {
+@@ -1934,7 +2438,7 @@ Scope {
          // Tall enough for the tallest expanded panel so the morph never clips.
          // The surface is transparent and input is limited to `mask`, so the extra
          // room costs nothing.
 -        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 180, root.appsMaxPanelHeight + 32)
-+        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 180, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32)
++        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 260, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32)
          visible: true
  
          // end-4 already enables compositor blur for `quickshell:*` surfaces.
-@@ -2073,6 +2299,13 @@ Scope {
+@@ -2022,6 +2526,7 @@ Scope {
+                 mediaLength: root.mediaLength
+                 mediaAvailable: root.mediaAvailable
+                 fontFamily: root.fontFamily
++                fontOptions: root.fontOptions
+                 batteryHoverText: root.batteryHoverText
+                 batteryCharging: root.batteryPluggedIn()
+                 batteryLevel: root.batteryLevel()
+@@ -2059,6 +2564,8 @@ Scope {
+                 btStatusText: root.btStatusText
+                 timeText: root.hoverTimeText
+                 dateText: root.hoverDateText
++                workspaceIndicatorId: root.workspaceIndicatorId
++                workspaceIndicatorCount: root.workspaceIndicatorCount
+                 wifiRadioEnabled: root.wifiRadioEnabled
+                 wifiNetworks: root.wifiNetworks
+                 wifiExpandedSsid: root.wifiExpandedSsid
+@@ -2073,6 +2580,16 @@ Scope {
                  appsSearchDraft: root.appsSearchDraft
                  appsStatusText: root.appsStatusText
                  appsFavoriteSlots: root.appsFavoriteSlots
@@ -394,10 +1496,19 @@ index 27445c9..082d66b 100644
 +                wallpaperStatusText: root.wallpaperStatusText
 +                wallpaperApplying: root.wallpaperApplying
 +                wallpaperHighlightIndex: root.wallpaperHighlightIndex
++                clipboardEntries: root.clipboardEntries
++                clipboardHighlightIndex: root.clipboardHighlightIndex
++                clipboardStatusText: root.clipboardStatusText
                  onPreviousRequested: root.mediaPrevious()
                  onPlayPauseRequested: root.mediaTogglePlaying()
                  onNextRequested: root.mediaNext()
-@@ -2107,10 +2340,21 @@ Scope {
+@@ -2102,15 +2619,38 @@ Scope {
+                 onGlacierSettingsRequested: root.toggleSettingsPanel()
+                 onSettingsCloseRequested: root.closePanelToWideIdle(root.settingsWidth)
+                 onLiquidGlassRequested: enabled => root.setLiquidGlassEnabled(enabled)
++                onFontFamilyRequested: family => root.setFontFamily(family)
+                 onIdleWidthRequested: width => root.setIdleWidth(width)
+                 onIdleHeightRequested: height => root.setIdleHeight(height)
                  onSettingsResetRequested: root.resetVisualSettings()
                  onAppsCloseRequested: root.closePanelToWideIdle(root.appsWidth)
                  onAppsPickerToggleRequested: root.toggleAppsPicker()
@@ -418,19 +1529,30 @@ index 27445c9..082d66b 100644
 +                onWallpaperApplyRequested: path => root.applyWallpaper(path)
 +                onWallpaperHighlightNavRequested: (dx, dy) => root.moveWallpaperHighlight(dx, dy)
 +                onWallpaperActivateRequested: root.activateWallpaperHighlight()
++                onCalcCloseRequested: root.closePanelToWideIdle(root.calcWidth)
++                onPowerCloseRequested: root.closePanelToWideIdle(root.powerWidth)
++                onPowerActionRequested: action => root.performPowerAction(action)
++                onClipboardCloseRequested: root.closePanelToWideIdle(root.clipboardWidth)
++                onClipboardRefreshRequested: root.scanClipboardHistory()
++                onClipboardClearRequested: root.clearClipboardHistory()
++                onClipboardApplyRequested: raw => root.applyClipboardEntry(raw)
++                onClipboardDeleteRequested: raw => root.deleteClipboardEntry(raw)
++                onClipboardHighlightNavRequested: delta => root.moveClipboardHighlight(delta)
++                onClipboardActivateRequested: root.activateClipboardHighlight()
++                onTimetableCloseRequested: root.closePanelToWideIdle(root.timetableWidth)
                  onBtSettingsRequested: root.toggleBluetoothPanel()
                  onSeekRequested: position => root.mediaSeek(position)
                  onHandleStyleRequested: style => root.setHandleStyle(style)
-@@ -2267,7 +2511,7 @@ Scope {
+@@ -2267,7 +2807,7 @@ Scope {
                  width: island.width
                  height: root.mode === "idle" && !root.interactionOpen ? Math.max(root.reservedZone, island.height) : island.height
                  hoverEnabled: true
 -                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
-+                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
++                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.visualMode === "calc" || root.visualMode === "power" || root.visualMode === "clipboard" || root.visualMode === "timetable" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
                  cursorShape: Qt.PointingHandCursor
                  onEntered: root.keepInteractionOpen(true)
                  onPositionChanged: mouse => root.maybeFinishExitPreview(mouse.x, width)
-@@ -2285,6 +2529,42 @@ Scope {
+@@ -2285,6 +2825,42 @@ Scope {
          }
      }
  
@@ -465,7 +1587,7 @@ index 27445c9..082d66b 100644
 +        windows: [islandWindow]
 +
 +        onCleared: {
-+            if (root.mode === "apps" || root.mode === "wallpaper")
++            if (root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable")
 +                root.showIdle();
 +        }
 +    }
@@ -473,7 +1595,7 @@ index 27445c9..082d66b 100644
      IpcHandler {
          target: "dynamicGlacier"
  
-@@ -2292,6 +2572,13 @@ Scope {
+@@ -2292,6 +2868,13 @@ Scope {
              root.showIdle();
          }
  
@@ -487,7 +1609,7 @@ index 27445c9..082d66b 100644
          function handle(style: string): void {
              root.setHandleStyle(style);
          }
-@@ -2336,6 +2623,10 @@ Scope {
+@@ -2336,6 +2919,34 @@ Scope {
              root.toggleAppsPanel();
          }
  
@@ -495,14 +1617,49 @@ index 27445c9..082d66b 100644
 +            root.toggleWallpaperPanel();
 +        }
 +
++        function calculator(): void {
++            root.toggleCalculatorPanel();
++        }
++
++        function power(): void {
++            root.toggleLogoutPanel();
++        }
++
++        function clipboardTestApply(raw: string): void {
++            root.applyClipboardEntry(raw);
++        }
++
++        function clipboard(): void {
++            root.toggleClipboardPanel();
++        }
++
++        function timetable(): void {
++            root.toggleTimetablePanel();
++        }
++
++        function workspaceHint(id: string): void {
++            root.showWorkspaceIndicator(parseInt(id));
++        }
++
          function wifi(): void {
              root.toggleWifiPanel();
          }
 diff --git a/quickshell/modules/dynamicGlacier/IslandContent.qml b/quickshell/modules/dynamicGlacier/IslandContent.qml
-index d816bfa..d850d73 100644
+index d816bfa..8a99520 100644
 --- a/quickshell/modules/dynamicGlacier/IslandContent.qml
 +++ b/quickshell/modules/dynamicGlacier/IslandContent.qml
-@@ -110,6 +110,14 @@ Item {
+@@ -68,7 +68,10 @@ Item {
+     property string btStatusText: ""
+     property string timeText: ""
+     property string dateText: ""
++    property int workspaceIndicatorId: 0
++    property int workspaceIndicatorCount: 4
+     property string fontFamily: "Noto Sans"
++    property var fontOptions: []
+     readonly property color primaryText: "#f7f7f7"
+     readonly property color secondaryText: "#7f7f7f"
+     readonly property color accent: "#ffffff"
+@@ -110,6 +113,28 @@ Item {
      property real settingsMorph: 0
      readonly property real settingsContentHeight: settingsContent.contentHeight
  
@@ -514,10 +1671,24 @@ index d816bfa..d850d73 100644
 +    property bool wallpaperApplying: false
 +    property int wallpaperHighlightIndex: 0
 +
++    property real calcMorph: 0
++    readonly property real powerContentHeight: powerContent.contentHeight
++    property real powerMorph: 0
++    readonly property real calcContentHeight: calcContent.contentHeight
++
++    readonly property real clipboardContentHeight: clipboardContent.contentHeight
++    property real clipboardMorph: 0
++    property var clipboardEntries: []
++    property int clipboardHighlightIndex: 0
++    property string clipboardStatusText: ""
++
++    property real timetableMorph: 0
++    readonly property real timetableContentHeight: timetableContent.contentHeight
++
      property var favoriteAppEntries: []
      property var favoriteAppIds: []
      property var appsPickerEntries: []
-@@ -117,6 +125,8 @@ Item {
+@@ -117,6 +142,8 @@ Item {
      property string appsSearchDraft: ""
      property string appsStatusText: ""
      property int appsFavoriteSlots: 8
@@ -526,16 +1697,20 @@ index d816bfa..d850d73 100644
  
      // 0 = island surface content, 1 = favorites dock. Driven by the surface morph transition.
      property real appsMorph: 0
-@@ -161,7 +171,7 @@ Item {
+@@ -161,7 +188,7 @@ Item {
      readonly property int favoriteAppCount: root.favoriteAppIds.length
  
      // Only one panel morph is ever non-zero, so the peek can react to whichever is running.
 -    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph)
-+    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph)
++    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph, root.calcMorph, root.powerMorph, root.clipboardMorph, root.timetableMorph)
  
      // The peek stays mounted through the morph so it can fade/shrink into the panel.
      readonly property bool peekVisible: (root.mode === "idle" && root.forceExpanded) || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps"
-@@ -197,11 +207,19 @@ Item {
+@@ -194,14 +221,34 @@ Item {
+     signal glacierSettingsRequested
+     signal settingsCloseRequested
+     signal liquidGlassRequested(bool enabled)
++    signal fontFamilyRequested(string family)
      signal idleWidthRequested(int width)
      signal idleHeightRequested(int height)
      signal settingsResetRequested
@@ -544,6 +1719,17 @@ index d816bfa..d850d73 100644
 +    signal wallpaperApplyRequested(string path)
 +    signal wallpaperHighlightNavRequested(int dx, int dy)
 +    signal wallpaperActivateRequested
++    signal calcCloseRequested
++    signal timetableCloseRequested
++    signal powerCloseRequested
++    signal powerActionRequested(string action)
++    signal clipboardCloseRequested
++    signal clipboardRefreshRequested
++    signal clipboardClearRequested
++    signal clipboardApplyRequested(string raw)
++    signal clipboardDeleteRequested(string raw)
++    signal clipboardHighlightNavRequested(int delta)
++    signal clipboardActivateRequested
      signal appsSettingsRequested
      signal appsCloseRequested
      signal appsPickerToggleRequested
@@ -555,7 +1741,209 @@ index d816bfa..d850d73 100644
      signal appsFavoriteToggleRequested(string id)
      signal appsLaunchRequested(string id)
      signal btSettingsRequested
-@@ -1055,6 +1073,25 @@ Item {
+@@ -354,19 +401,97 @@ Item {
+             }
+         }
+ 
+-        Text {
++        Item {
++            id: clockOrTitleViewport
++
+             anchors.left: root.mediaAvailable ? collapsedCover.right : parent.left
+             anchors.leftMargin: root.mediaAvailable ? 9 : 0
+             anchors.right: parent.right
+             anchors.rightMargin: root.mediaAvailable ? 9 : 0
+             anchors.verticalCenter: parent.verticalCenter
+-            text: root.timeText
+-            color: root.primaryText
+-            horizontalAlignment: root.mediaAvailable ? Text.AlignLeft : Text.AlignHCenter
+-            elide: Text.ElideRight
+-            font.family: root.fontFamily
+-            font.pixelSize: 14
+-            font.weight: Font.Bold
++            height: 16
++            clip: true
++
++            // Swaps to a dot row while a workspace switch is in flight, then
++            // fades back to whatever this slot would otherwise be showing —
++            // the current track next to its equalizer if media is playing,
++            // the clock if not. A title too long to fit ticks back and forth
++            // (paused at each end) instead of just eliding.
++            Text {
++                id: clockLabel
++
++                readonly property bool marqueeActive: root.mediaAvailable && root.workspaceIndicatorId === 0 && clockLabel.width > clockOrTitleViewport.width
++
++                // The scroll animation drives x imperatively; nothing else
++                // resets it once that stops, so a shorter title (or the
++                // clock reappearing) after a long one would otherwise stay
++                // stuck mid-scroll.
++                onMarqueeActiveChanged: {
++                    if (!clockLabel.marqueeActive)
++                        clockLabel.x = 0;
++                }
++
++                anchors.verticalCenter: parent.verticalCenter
++                anchors.horizontalCenter: root.mediaAvailable ? undefined : clockOrTitleViewport.horizontalCenter
++                width: implicitWidth
++                text: root.mediaAvailable ? root.title : root.timeText
++                color: root.primaryText
++                elide: Text.ElideNone
++                font.family: root.fontFamily
++                font.pixelSize: 14
++                font.weight: Font.Bold
++                opacity: root.workspaceIndicatorId === 0 ? 1 : 0
++                scale: root.workspaceIndicatorId === 0 ? 1 : 0.75
++                transformOrigin: Item.Center
++
++                Behavior on opacity {
++                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
++                }
++
++                Behavior on scale {
++                    NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
++                }
++
++                SequentialAnimation {
++                    running: clockLabel.marqueeActive
++                    loops: Animation.Infinite
++
++                    PauseAnimation { duration: 1100 }
++                    NumberAnimation {
++                        target: clockLabel
++                        property: "x"
++                        to: clockOrTitleViewport.width - clockLabel.width
++                        duration: Math.max(1200, (clockLabel.width - clockOrTitleViewport.width) * 40)
++                        easing.type: Easing.Linear
++                    }
++                    PauseAnimation { duration: 1100 }
++                    NumberAnimation {
++                        target: clockLabel
++                        property: "x"
++                        to: 0
++                        duration: Math.max(1200, (clockLabel.width - clockOrTitleViewport.width) * 40)
++                        easing.type: Easing.Linear
++                    }
++                }
++            }
++
++            WorkspaceDots {
++                anchors.centerIn: parent
++                count: root.workspaceIndicatorCount
++                activeIndex: root.workspaceIndicatorId
++                dotSize: 6
++                opacity: root.workspaceIndicatorId > 0 ? 1 : 0
++                scale: root.workspaceIndicatorId > 0 ? 1 : 0.75
++                transformOrigin: Item.Center
++
++                Behavior on opacity {
++                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
++                }
++
++                Behavior on scale {
++                    NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
++                }
++            }
+         }
+ 
+         Behavior on opacity {
+@@ -410,28 +535,67 @@ Item {
+                 Layout.fillHeight: true
+                 spacing: 12
+ 
+-                ColumnLayout {
++                Item {
+                     Layout.fillWidth: true
+-                    spacing: 0
++                    Layout.fillHeight: true
+ 
+-                    Text {
+-                        Layout.fillWidth: true
+-                        text: root.timeText
+-                        color: root.primaryText
+-                        elide: Text.ElideRight
+-                        font.family: root.fontFamily
+-                        font.pixelSize: 28
+-                        font.weight: Font.Bold
++                    ColumnLayout {
++                        anchors.left: parent.left
++                        anchors.right: parent.right
++                        anchors.verticalCenter: parent.verticalCenter
++                        spacing: 0
++                        opacity: root.workspaceIndicatorId === 0 ? 1 : 0
++                        scale: root.workspaceIndicatorId === 0 ? 1 : 0.85
++                        transformOrigin: Item.Left
++
++                        Behavior on opacity {
++                            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
++                        }
++
++                        Behavior on scale {
++                            NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 2 }
++                        }
++
++                        Text {
++                            Layout.fillWidth: true
++                            text: root.timeText
++                            color: root.primaryText
++                            elide: Text.ElideRight
++                            font.family: root.fontFamily
++                            font.pixelSize: 28
++                            font.weight: Font.Bold
++                        }
++
++                        Text {
++                            Layout.fillWidth: true
++                            text: root.dateText
++                            color: "#b8b8b8"
++                            elide: Text.ElideRight
++                            font.family: root.fontFamily
++                            font.pixelSize: 13
++                            font.weight: Font.DemiBold
++                        }
+                     }
+ 
+-                    Text {
+-                        Layout.fillWidth: true
+-                        text: root.dateText
+-                        color: "#b8b8b8"
+-                        elide: Text.ElideRight
+-                        font.family: root.fontFamily
+-                        font.pixelSize: 13
+-                        font.weight: Font.DemiBold
++                    // Swaps the clock for a bigger dot row while a workspace
++                    // switch is in flight, then fades back to the clock.
++                    WorkspaceDots {
++                        anchors.left: parent.left
++                        anchors.verticalCenter: parent.verticalCenter
++                        count: root.workspaceIndicatorCount
++                        activeIndex: root.workspaceIndicatorId
++                        dotSize: 12
++                        opacity: root.workspaceIndicatorId > 0 ? 1 : 0
++                        scale: root.workspaceIndicatorId > 0 ? 1 : 0.7
++                        transformOrigin: Item.Left
++
++                        Behavior on opacity {
++                            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
++                        }
++
++                        Behavior on scale {
++                            NumberAnimation { duration: 260; easing.type: Easing.OutBack; easing.overshoot: 2.6 }
++                        }
+                     }
+                 }
+ 
+@@ -1047,14 +1211,83 @@ Item {
+         idleWidth: root.idleWidth
+         idleHeight: root.idleHeight
+         fontFamily: root.fontFamily
++        fontOptions: root.fontOptions
+         morph: root.settingsMorph
+         onCloseRequested: root.settingsCloseRequested()
+         onLiquidGlassRequested: enabled => root.liquidGlassRequested(enabled)
++        onFontFamilyRequested: family => root.fontFamilyRequested(family)
+         onIdleWidthRequested: width => root.idleWidthRequested(width)
+         onIdleHeightRequested: height => root.idleHeightRequested(height)
          onResetRequested: root.settingsResetRequested()
      }
  
@@ -578,10 +1966,58 @@ index d816bfa..d850d73 100644
 +        onActivateRequested: root.wallpaperActivateRequested()
 +    }
 +
++    CalculatorPanel {
++        id: calcContent
++
++        anchors.fill: parent
++        fontFamily: root.fontFamily
++        morph: root.calcMorph
++        onCloseRequested: root.calcCloseRequested()
++        onSettingsRequested: root.glacierSettingsRequested()
++    }
++
++    TimetablePanel {
++        id: timetableContent
++
++        anchors.fill: parent
++        fontFamily: root.fontFamily
++        morph: root.timetableMorph
++        onCloseRequested: root.timetableCloseRequested()
++        onSettingsRequested: root.glacierSettingsRequested()
++    }
++
++    PowerMenuPanel {
++        id: powerContent
++
++        anchors.fill: parent
++        fontFamily: root.fontFamily
++        morph: root.powerMorph
++        onCloseRequested: root.powerCloseRequested()
++        onPowerActionRequested: action => root.powerActionRequested(action)
++    }
++
++    ClipboardPanel {
++        id: clipboardContent
++
++        anchors.fill: parent
++        entries: root.clipboardEntries
++        highlightIndex: root.clipboardHighlightIndex
++        statusText: root.clipboardStatusText
++        fontFamily: root.fontFamily
++        morph: root.clipboardMorph
++        onCloseRequested: root.clipboardCloseRequested()
++        onRefreshRequested: root.clipboardRefreshRequested()
++        onClearRequested: root.clipboardClearRequested()
++        onApplyRequested: raw => root.clipboardApplyRequested(raw)
++        onDeleteRequested: raw => root.clipboardDeleteRequested(raw)
++        onHighlightNavRequested: delta => root.clipboardHighlightNavRequested(delta)
++        onActivateRequested: root.clipboardActivateRequested()
++    }
++
      Item {
          id: appsContent
  
-@@ -1076,7 +1113,28 @@ Item {
+@@ -1076,7 +1309,28 @@ Item {
              anchors.margins: root.appsPanelPadding
              active: root.mode === "apps" || root.appsMorph > 0
  
@@ -611,7 +2047,7 @@ index d816bfa..d850d73 100644
                  spacing: root.appsSectionSpacing
  
                  // The three rows below are pinned at every size so the drawer stays the
-@@ -1203,6 +1261,7 @@ Item {
+@@ -1203,6 +1457,7 @@ Item {
                              // Tiles stagger in off the shared morph progress, same as the
                              // Wi-Fi rows, so both panels unfold with one rhythm.
                              readonly property real appear: Math.max(0, Math.min(1, (root.appsMorph - appTile.index * 0.035) / 0.6))
@@ -619,7 +2055,7 @@ index d816bfa..d850d73 100644
  
                              Layout.fillWidth: true
                              Layout.fillHeight: true
-@@ -1210,8 +1269,8 @@ Item {
+@@ -1210,8 +1465,8 @@ Item {
                              Layout.maximumHeight: root.appsTileHeight
                              radius: 14
                              color: appTile.modelData.filled ? (appTileMouse.containsMouse ? "#161616" : "#0a0a0a") : (appTileMouse.containsMouse ? "#0e0e0e" : "transparent")
@@ -630,7 +2066,7 @@ index d816bfa..d850d73 100644
                              opacity: appTile.appear
                              scale: 0.88 + 0.12 * appTile.appear
  
-@@ -1391,12 +1450,17 @@ Item {
+@@ -1391,12 +1646,17 @@ Item {
                              // Escape closes the drawer, which also drops the keyboard
                              // grab the compositor handed us on click.
                              Keys.onEscapePressed: root.appsPickerToggleRequested()
@@ -649,7 +2085,7 @@ index d816bfa..d850d73 100644
                                      return;
                                  }
  
-@@ -1472,6 +1536,10 @@ Item {
+@@ -1472,6 +1732,10 @@ Item {
                              interactive: contentHeight > height
                              boundsBehavior: Flickable.StopAtBounds
                              cacheBuffer: 240
@@ -660,7 +2096,7 @@ index d816bfa..d850d73 100644
  
                              delegate: Rectangle {
                                  id: appsPickerRow
-@@ -1480,13 +1548,14 @@ Item {
+@@ -1480,13 +1744,14 @@ Item {
                                  required property int index
  
                                  readonly property bool selected: root.favoriteAppIds.indexOf(appsPickerRow.modelData.id) !== -1
@@ -677,7 +2113,7 @@ index d816bfa..d850d73 100644
  
                                  RowLayout {
                                      anchors.fill: parent
-@@ -1578,6 +1647,7 @@ Item {
+@@ -1578,6 +1843,7 @@ Item {
                      }
                  }
              }
@@ -686,20 +2122,43 @@ index d816bfa..d850d73 100644
      }
  
 diff --git a/quickshell/modules/dynamicGlacier/IslandSurface.qml b/quickshell/modules/dynamicGlacier/IslandSurface.qml
-index 9ec4a11..0152cdb 100644
+index 9ec4a11..43cab86 100644
 --- a/quickshell/modules/dynamicGlacier/IslandSurface.qml
 +++ b/quickshell/modules/dynamicGlacier/IslandSurface.qml
-@@ -73,6 +73,9 @@ Item {
+@@ -44,7 +44,10 @@ Item {
+     property int btBattery: -1
+     property string timeText: ""
+     property string dateText: ""
++    property int workspaceIndicatorId: 0
++    property int workspaceIndicatorCount: 4
+     property string fontFamily: "Noto Sans"
++    property var fontOptions: []
+ 
+     // Geometry the shell asks for. The surface owns the actual width/height so the
+     // morph between shapes can be expressed as States + Transitions.
+@@ -73,6 +76,21 @@ Item {
      property real appsMorph: 0
      readonly property real appsPanelHeight: islandContent.appsContentHeight
  
 +    property real wallpaperMorph: 0
 +    readonly property real wallpaperPanelHeight: islandContent.wallpaperContentHeight
 +
++    property real calcMorph: 0
++    readonly property real calcPanelHeight: islandContent.calcContentHeight
++
++    property real powerMorph: 0
++    readonly property real powerPanelHeight: islandContent.powerContentHeight
++
++    property real clipboardMorph: 0
++    readonly property real clipboardPanelHeight: islandContent.clipboardContentHeight
++
++    property real timetableMorph: 0
++    readonly property real timetablePanelHeight: islandContent.timetableContentHeight
++
      // 0 = island, 1 = volume HUD. Same mechanism as the two panels above, so the
      // pill grows out of the handle instead of being painted on top of it.
      property real volumeMorph: 0
-@@ -131,6 +134,14 @@ Item {
+@@ -131,6 +149,18 @@ Item {
      property string appsSearchDraft: ""
      property string appsStatusText: ""
      property int appsFavoriteSlots: 8
@@ -711,10 +2170,22 @@ index 9ec4a11..0152cdb 100644
 +    property string wallpaperStatusText: ""
 +    property bool wallpaperApplying: false
 +    property int wallpaperHighlightIndex: 0
++
++    property var clipboardEntries: []
++    property int clipboardHighlightIndex: 0
++    property string clipboardStatusText: ""
  
      signal previousRequested
      signal playPauseRequested
-@@ -165,8 +176,16 @@ Item {
+@@ -157,6 +187,7 @@ Item {
+     signal glacierSettingsRequested
+     signal settingsCloseRequested
+     signal liquidGlassRequested(bool enabled)
++    signal fontFamilyRequested(string family)
+     signal idleWidthRequested(int width)
+     signal idleHeightRequested(int height)
+     signal settingsResetRequested
+@@ -165,8 +196,27 @@ Item {
      signal appsPickerToggleRequested
      signal appsSearchChanged(string text)
      signal appsSearchAccepted
@@ -728,32 +2199,67 @@ index 9ec4a11..0152cdb 100644
 +    signal wallpaperApplyRequested(string path)
 +    signal wallpaperHighlightNavRequested(int dx, int dy)
 +    signal wallpaperActivateRequested
++    signal calcCloseRequested
++    signal powerCloseRequested
++    signal powerActionRequested(string action)
++    signal clipboardCloseRequested
++    signal clipboardRefreshRequested
++    signal clipboardClearRequested
++    signal clipboardApplyRequested(string raw)
++    signal clipboardDeleteRequested(string raw)
++    signal clipboardHighlightNavRequested(int delta)
++    signal clipboardActivateRequested
++    signal timetableCloseRequested
      signal btSettingsRequested
      signal seekRequested(real position)
      signal handleStyleRequested(string style)
-@@ -364,7 +383,7 @@ Item {
+@@ -364,7 +414,7 @@ Item {
              z: 10
              anchors.fill: parent
              // Padding relaxes to zero as a panel takes over — panels bring their own.
 -            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.volumeMorph) : 0
-+            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.volumeMorph) : 0
++            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.calcMorph) * (1 - root.powerMorph) * (1 - root.clipboardMorph) * (1 - root.timetableMorph) * (1 - root.volumeMorph) : 0
              wifiMorph: root.wifiMorph
              wifiMaxPanelHeight: root.wifiMaxPanelHeight
              btMorph: root.btMorph
-@@ -373,6 +392,7 @@ Item {
+@@ -373,6 +423,11 @@ Item {
              settingsMorph: root.settingsMorph
              appsMorph: root.appsMorph
              appsMaxPanelHeight: root.appsMaxPanelHeight
 +            wallpaperMorph: root.wallpaperMorph
++            calcMorph: root.calcMorph
++            powerMorph: root.powerMorph
++            clipboardMorph: root.clipboardMorph
++            timetableMorph: root.timetableMorph
              volumeMorph: root.volumeMorph
              volumeKind: root.volumeKind
              mode: root.mode
-@@ -452,6 +472,13 @@ Item {
+@@ -402,6 +457,7 @@ Item {
+             mediaLength: root.mediaLength
+             mediaAvailable: root.mediaAvailable
+             fontFamily: root.fontFamily
++            fontOptions: root.fontOptions
+             batteryHoverText: root.batteryHoverText
+             batteryCharging: root.batteryCharging
+             batteryLevel: root.batteryLevel
+@@ -439,6 +495,8 @@ Item {
+             btStatusText: root.btStatusText
+             timeText: root.timeText
+             dateText: root.dateText
++            workspaceIndicatorId: root.workspaceIndicatorId
++            workspaceIndicatorCount: root.workspaceIndicatorCount
+             wifiRadioEnabled: root.wifiRadioEnabled
+             wifiNetworks: root.wifiNetworks
+             wifiExpandedSsid: root.wifiExpandedSsid
+@@ -452,6 +510,16 @@ Item {
              appsSearchDraft: root.appsSearchDraft
              appsStatusText: root.appsStatusText
              appsFavoriteSlots: root.appsFavoriteSlots
 +            appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
 +            appsPickerHighlightIndex: root.appsPickerHighlightIndex
++            clipboardEntries: root.clipboardEntries
++            clipboardHighlightIndex: root.clipboardHighlightIndex
++            clipboardStatusText: root.clipboardStatusText
 +            wallpaperEntries: root.wallpaperEntries
 +            currentWallpaperPath: root.currentWallpaperPath
 +            wallpaperStatusText: root.wallpaperStatusText
@@ -762,7 +2268,15 @@ index 9ec4a11..0152cdb 100644
              onPreviousRequested: root.previousRequested()
              onPlayPauseRequested: root.playPauseRequested()
              onNextRequested: root.nextRequested()
-@@ -485,8 +512,16 @@ Item {
+@@ -477,6 +545,7 @@ Item {
+             onGlacierSettingsRequested: root.glacierSettingsRequested()
+             onSettingsCloseRequested: root.settingsCloseRequested()
+             onLiquidGlassRequested: enabled => root.liquidGlassRequested(enabled)
++            onFontFamilyRequested: family => root.fontFamilyRequested(family)
+             onIdleWidthRequested: width => root.idleWidthRequested(width)
+             onIdleHeightRequested: height => root.idleHeightRequested(height)
+             onSettingsResetRequested: root.settingsResetRequested()
+@@ -485,8 +554,27 @@ Item {
              onAppsPickerToggleRequested: root.appsPickerToggleRequested()
              onAppsSearchChanged: text => root.appsSearchChanged(text)
              onAppsSearchAccepted: root.appsSearchAccepted()
@@ -776,95 +2290,146 @@ index 9ec4a11..0152cdb 100644
 +            onWallpaperApplyRequested: path => root.wallpaperApplyRequested(path)
 +            onWallpaperHighlightNavRequested: (dx, dy) => root.wallpaperHighlightNavRequested(dx, dy)
 +            onWallpaperActivateRequested: root.wallpaperActivateRequested()
++            onCalcCloseRequested: root.calcCloseRequested()
++            onPowerCloseRequested: root.powerCloseRequested()
++            onPowerActionRequested: action => root.powerActionRequested(action)
++            onClipboardCloseRequested: root.clipboardCloseRequested()
++            onClipboardRefreshRequested: root.clipboardRefreshRequested()
++            onClipboardClearRequested: root.clipboardClearRequested()
++            onClipboardApplyRequested: raw => root.clipboardApplyRequested(raw)
++            onClipboardDeleteRequested: raw => root.clipboardDeleteRequested(raw)
++            onClipboardHighlightNavRequested: delta => root.clipboardHighlightNavRequested(delta)
++            onClipboardActivateRequested: root.clipboardActivateRequested()
++            onTimetableCloseRequested: root.timetableCloseRequested()
              onBtSettingsRequested: root.btSettingsRequested()
              onSeekRequested: position => root.seekRequested(position)
              onHandleStyleRequested: style => root.handleStyleRequested(style)
-@@ -496,7 +531,7 @@ Item {
+@@ -496,7 +584,7 @@ Item {
      // Height is a plain binding, not part of the state, so it can re-target while
      // the morph is still running — the network list usually lands mid-transition,
      // and the app picker drawer opens long after the morph has settled.
 -    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : root.targetH))))
-+    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : root.targetH)))))
++    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : (root.mode === "calc" ? Math.max(root.targetH, root.calcPanelHeight) : (root.mode === "power" ? Math.max(root.targetH, root.powerPanelHeight) : (root.mode === "clipboard" ? Math.max(root.targetH, root.clipboardPanelHeight) : (root.mode === "timetable" ? Math.max(root.targetH, root.timetablePanelHeight) : root.targetH)))))))))
  
      state: root.mode !== "idle" ? root.mode : (root.forceExpanded ? "peek" : "collapsed")
  
-@@ -511,6 +546,7 @@ Item {
+@@ -511,6 +599,11 @@ Item {
                  root.batteryMorph: 0
                  root.settingsMorph: 0
                  root.appsMorph: 0
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
                  root.volumeMorph: 0
              }
          },
-@@ -524,6 +560,7 @@ Item {
+@@ -524,6 +617,11 @@ Item {
                  root.batteryMorph: 0
                  root.settingsMorph: 0
                  root.appsMorph: 0
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
                  root.volumeMorph: 0
              }
          },
-@@ -537,6 +574,7 @@ Item {
+@@ -537,6 +635,11 @@ Item {
                  root.batteryMorph: 0
                  root.settingsMorph: 0
                  root.appsMorph: 0
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
                  root.volumeMorph: 0
              }
          },
-@@ -550,6 +588,7 @@ Item {
+@@ -550,6 +653,11 @@ Item {
                  root.batteryMorph: 0
                  root.settingsMorph: 0
                  root.appsMorph: 0
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
                  root.volumeMorph: 0
              }
          },
-@@ -563,6 +602,7 @@ Item {
+@@ -563,6 +671,11 @@ Item {
                  root.batteryMorph: 0
                  root.settingsMorph: 0
                  root.appsMorph: 0
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
                  root.volumeMorph: 1
              }
          },
-@@ -576,6 +616,7 @@ Item {
+@@ -576,6 +689,11 @@ Item {
                  root.batteryMorph: 0
                  root.settingsMorph: 0
                  root.appsMorph: 0
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
                  root.volumeMorph: 0
              }
          },
-@@ -589,6 +630,7 @@ Item {
+@@ -589,6 +707,11 @@ Item {
                  root.batteryMorph: 0
                  root.settingsMorph: 0
                  root.appsMorph: 0
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
                  root.volumeMorph: 0
              }
          },
-@@ -602,6 +644,7 @@ Item {
+@@ -602,6 +725,11 @@ Item {
                  root.batteryMorph: 1
                  root.settingsMorph: 0
                  root.appsMorph: 0
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
                  root.volumeMorph: 0
              }
          },
-@@ -615,6 +658,7 @@ Item {
+@@ -615,6 +743,11 @@ Item {
                  root.batteryMorph: 0
                  root.settingsMorph: 1
                  root.appsMorph: 0
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
                  root.volumeMorph: 0
              }
          },
-@@ -628,6 +672,21 @@ Item {
+@@ -628,6 +761,101 @@ Item {
                  root.batteryMorph: 0
                  root.settingsMorph: 0
                  root.appsMorph: 1
 +                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
 +                root.volumeMorph: 0
 +            }
 +        },
@@ -879,10 +2444,86 @@ index 9ec4a11..0152cdb 100644
 +                root.settingsMorph: 0
 +                root.appsMorph: 0
 +                root.wallpaperMorph: 1
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
++                root.volumeMorph: 0
++            }
++        },
++        State {
++            name: "calc"
++
++            PropertyChanges {
++                root.width: root.targetW
++                root.wifiMorph: 0
++                root.btMorph: 0
++                root.batteryMorph: 0
++                root.settingsMorph: 0
++                root.appsMorph: 0
++                root.wallpaperMorph: 0
++                root.calcMorph: 1
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
++                root.volumeMorph: 0
++            }
++        },
++        State {
++            name: "power"
++
++            PropertyChanges {
++                root.width: root.targetW
++                root.wifiMorph: 0
++                root.btMorph: 0
++                root.batteryMorph: 0
++                root.settingsMorph: 0
++                root.appsMorph: 0
++                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 1
++                root.clipboardMorph: 0
++                root.timetableMorph: 0
++                root.volumeMorph: 0
++            }
++        },
++        State {
++            name: "clipboard"
++
++            PropertyChanges {
++                root.width: root.targetW
++                root.wifiMorph: 0
++                root.btMorph: 0
++                root.batteryMorph: 0
++                root.settingsMorph: 0
++                root.appsMorph: 0
++                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 1
++                root.timetableMorph: 0
++                root.volumeMorph: 0
++            }
++        },
++        State {
++            name: "timetable"
++
++            PropertyChanges {
++                root.width: root.targetW
++                root.wifiMorph: 0
++                root.btMorph: 0
++                root.batteryMorph: 0
++                root.settingsMorph: 0
++                root.appsMorph: 0
++                root.wallpaperMorph: 0
++                root.calcMorph: 0
++                root.powerMorph: 0
++                root.clipboardMorph: 0
++                root.timetableMorph: 1
                  root.volumeMorph: 0
              }
          }
-@@ -815,6 +874,43 @@ Item {
+@@ -815,6 +1043,187 @@ Item {
                  }
              }
          },
@@ -923,18 +2564,1036 @@ index 9ec4a11..0152cdb 100644
 +                }
 +            }
 +        },
++        // Morph into the calculator. Same choreography as the other panels.
++        Transition {
++            to: "calc"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 340
++                    easing.type: Easing.OutBack
++                    easing.overshoot: 0.7
++                }
++
++                NumberAnimation {
++                    property: "calcMorph"
++                    duration: 440
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
++        Transition {
++            from: "calc"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 300
++                    easing.type: Easing.InOutCubic
++                }
++
++                NumberAnimation {
++                    property: "calcMorph"
++                    duration: 260
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
++        // Morph into the power menu. Same choreography as the other panels.
++        Transition {
++            to: "power"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 340
++                    easing.type: Easing.OutBack
++                    easing.overshoot: 0.7
++                }
++
++                NumberAnimation {
++                    property: "powerMorph"
++                    duration: 440
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
++        Transition {
++            from: "power"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 300
++                    easing.type: Easing.InOutCubic
++                }
++
++                NumberAnimation {
++                    property: "powerMorph"
++                    duration: 260
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
++        // Morph into the clipboard history. Same choreography as the other panels.
++        Transition {
++            to: "clipboard"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 340
++                    easing.type: Easing.OutBack
++                    easing.overshoot: 0.7
++                }
++
++                NumberAnimation {
++                    property: "clipboardMorph"
++                    duration: 440
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
++        Transition {
++            from: "clipboard"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 300
++                    easing.type: Easing.InOutCubic
++                }
++
++                NumberAnimation {
++                    property: "clipboardMorph"
++                    duration: 260
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
++        // Morph into the timetable. Same choreography as the other panels.
++        Transition {
++            to: "timetable"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 340
++                    easing.type: Easing.OutBack
++                    easing.overshoot: 0.7
++                }
++
++                NumberAnimation {
++                    property: "timetableMorph"
++                    duration: 440
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
++        Transition {
++            from: "timetable"
++
++            ParallelAnimation {
++                NumberAnimation {
++                    property: "width"
++                    duration: 300
++                    easing.type: Easing.InOutCubic
++                }
++
++                NumberAnimation {
++                    property: "timetableMorph"
++                    duration: 260
++                    easing.type: Easing.OutCubic
++                }
++            }
++        },
          // Volume HUD: the handle springs out sideways and the bar is already
          // there by the time the width settles, so the pill reads as one gesture
          // rather than a shape that fills in afterwards.
-@@ -861,7 +957,7 @@ Item {
+@@ -861,7 +1270,7 @@ Item {
              }
  
              NumberAnimation {
 -                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,volumeMorph"
-+                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,volumeMorph"
++                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,calcMorph,powerMorph,clipboardMorph,timetableMorph,volumeMorph"
                  duration: 200
                  easing.type: Easing.OutCubic
              }
+diff --git a/quickshell/modules/dynamicGlacier/PowerMenuPanel.qml b/quickshell/modules/dynamicGlacier/PowerMenuPanel.qml
+new file mode 100644
+index 0000000..78d830c
+--- /dev/null
++++ b/quickshell/modules/dynamicGlacier/PowerMenuPanel.qml
+@@ -0,0 +1,329 @@
++import QtQuick
++import QtQuick.Layouts
++
++Item {
++    id: root
++
++    property string fontFamily: "Noto Sans"
++    property real morph: 0
++
++    readonly property color primaryText: "#f7f7f7"
++    readonly property color secondaryText: "#777777"
++    readonly property int panelPadding: 16
++    readonly property int headerHeight: 32
++    readonly property int tileRowHeight: 98
++    readonly property int sectionSpacing: 10
++    readonly property real contentHeight: root.panelPadding * 2 + root.headerHeight + root.sectionSpacing + root.tileRowHeight
++    readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
++    // How long a tile must be held before it fires, in ms.
++    readonly property int holdDuration: 650
++    // Index of the tile currently held down via its number key, or -1.
++    // Repeater delegates read this to drive the same hold-to-confirm
++    // animation the mouse gesture uses.
++    property int heldIndex: -1
++
++    readonly property var actions: [
++        { id: "lock", label: "Lock", icon: "lock", tint: "#4ade80" },
++        { id: "logout", label: "Logout", icon: "logout", tint: "#f0b429" },
++        { id: "suspend", label: "Sleep", icon: "bedtime", tint: "#4ade80" },
++        { id: "reboot", label: "Reboot", icon: "restart_alt", tint: "#f0736a" },
++        { id: "shutdown", label: "Shutdown", icon: "power_settings_new", tint: "#f0736a" }
++    ]
++
++    signal closeRequested
++    signal powerActionRequested(string action)
++
++    opacity: root.panelProgress
++    visible: opacity > 0.001
++    scale: 0.94 + 0.06 * root.panelProgress
++    transformOrigin: Item.Top
++
++    // Same reasoning as the other standalone panels: instantiated once at
++    // startup, so grab focus fresh on every open rather than relying on
++    // Component.onCompleted.
++    onVisibleChanged: {
++        if (root.visible)
++            powerFocusScope.forceActiveFocus();
++    }
++
++    FocusScope {
++        id: powerFocusScope
++
++        anchors.fill: parent
++        focus: true
++
++        Keys.onEscapePressed: root.closeRequested()
++
++        // 1-5 mirror the tiles left to right. A real key-up always fires
++        // exactly once even under OS key-repeat, so a single onPressed is
++        // enough to start the hold — the animation runs on its own timeline
++        // from there, same as the mouse gesture.
++        Keys.onPressed: event => {
++            if (event.isAutoRepeat)
++                return;
++
++            const index = event.key - Qt.Key_1;
++
++            if (index >= 0 && index < root.actions.length) {
++                root.heldIndex = index;
++                event.accepted = true;
++            }
++        }
++
++        Keys.onReleased: event => {
++            if (event.isAutoRepeat)
++                return;
++
++            const index = event.key - Qt.Key_1;
++
++            if (index === root.heldIndex) {
++                root.heldIndex = -1;
++                event.accepted = true;
++            }
++        }
++
++        ColumnLayout {
++            anchors.fill: parent
++            anchors.margins: root.panelPadding
++            spacing: root.sectionSpacing
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.headerHeight
++                spacing: 10
++
++                Rectangle {
++                    Layout.preferredWidth: root.headerHeight
++                    Layout.preferredHeight: root.headerHeight
++                    radius: 11
++                    color: "#090909"
++                    border.width: 1
++                    border.color: "#232323"
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "power_settings_new"
++                        size: 15
++                        color: root.primaryText
++                    }
++                }
++
++                ColumnLayout {
++                    Layout.fillWidth: true
++                    spacing: 0
++
++                    Text {
++                        Layout.fillWidth: true
++                        text: "Power"
++                        color: root.primaryText
++                        elide: Text.ElideRight
++                        font.family: root.fontFamily
++                        font.pixelSize: 15
++                        font.weight: Font.Bold
++                    }
++
++                    Text {
++                        Layout.fillWidth: true
++                        text: "Hold a tile, or its number key, to confirm"
++                        color: root.secondaryText
++                        elide: Text.ElideRight
++                        font.family: root.fontFamily
++                        font.pixelSize: 11
++                        font.weight: Font.DemiBold
++                    }
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: closeMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++                    scale: closeMouse.pressed ? 0.86 : (closeMouse.containsMouse ? 1.1 : 1)
++
++                    Behavior on scale {
++                        NumberAnimation { duration: 140; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
++                    }
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "close"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: closeMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.closeRequested()
++                    }
++                }
++            }
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.tileRowHeight
++                spacing: 8
++
++                Repeater {
++                    model: root.actions
++
++                    delegate: Rectangle {
++                        id: actionTile
++
++                        required property var modelData
++                        required property int index
++
++                        property real holdProgress: 0
++                        readonly property color tintColor: actionTile.modelData.tint
++                        readonly property bool keyHeld: actionTile.index === root.heldIndex
++
++                        // Guards against resetAnim (still running from a
++                        // quick prior release) and holdAnim both driving
++                        // holdProgress at once on a fast re-press — shared
++                        // by both the mouse gesture and the number-key one.
++                        function beginHold() {
++                            resetAnim.stop();
++                            holdAnim.restart();
++                        }
++
++                        function endHold() {
++                            holdAnim.stop();
++                        }
++
++                        onKeyHeldChanged: {
++                            if (actionTile.keyHeld)
++                                actionTile.beginHold();
++                            else
++                                actionTile.endHold();
++                        }
++
++                        Layout.fillWidth: true
++                        Layout.fillHeight: true
++                        radius: 14
++                        color: "#080808"
++                        border.width: 1
++                        border.color: Qt.tint("#202020", Qt.rgba(actionTile.tintColor.r, actionTile.tintColor.g, actionTile.tintColor.b, actionTile.holdProgress * 0.7))
++                        clip: true
++
++                        // The charge bar: fills from the bottom while held,
++                        // firing the action only once it's completely full —
++                        // a fat-fingered tap alone can never trigger anything.
++                        Rectangle {
++                            anchors.left: parent.left
++                            anchors.right: parent.right
++                            anchors.bottom: parent.bottom
++                            height: parent.height * actionTile.holdProgress
++                            color: actionTile.tintColor
++                            opacity: 0.16
++                        }
++
++                        NumberAnimation {
++                            id: holdAnim
++
++                            target: actionTile
++                            property: "holdProgress"
++                            from: actionTile.holdProgress
++                            to: 1
++                            duration: root.holdDuration * (1 - actionTile.holdProgress)
++                            easing.type: Easing.Linear
++
++                            onStopped: {
++                                if (actionTile.holdProgress < 0.999) {
++                                    resetAnim.restart();
++                                    return;
++                                }
++
++                                tilePop.restart();
++                                root.powerActionRequested(actionTile.modelData.id);
++                                clearTimer.restart();
++                            }
++                        }
++
++                        NumberAnimation {
++                            id: resetAnim
++
++                            target: actionTile
++                            property: "holdProgress"
++                            to: 0
++                            duration: 180
++                            easing.type: Easing.OutCubic
++                        }
++
++                        Timer {
++                            id: clearTimer
++
++                            interval: 260
++                            repeat: false
++                            onTriggered: resetAnim.restart()
++                        }
++
++                        SequentialAnimation {
++                            id: tilePop
++
++                            NumberAnimation { target: tileIcon; property: "scale"; to: 1.35; duration: 110; easing.type: Easing.OutCubic }
++                            NumberAnimation { target: tileIcon; property: "scale"; to: 1; duration: 260; easing.type: Easing.OutBack; easing.overshoot: 2.2 }
++                        }
++
++                        ColumnLayout {
++                            anchors.centerIn: parent
++                            spacing: 6
++
++                            MIcon {
++                                id: tileIcon
++
++                                Layout.alignment: Qt.AlignHCenter
++                                name: actionTile.modelData.icon
++                                size: 20
++                                color: Qt.tint(root.primaryText, Qt.rgba(actionTile.tintColor.r, actionTile.tintColor.g, actionTile.tintColor.b, actionTile.holdProgress * 0.85))
++                            }
++
++                            Text {
++                                Layout.alignment: Qt.AlignHCenter
++                                text: actionTile.modelData.label
++                                color: root.secondaryText
++                                font.family: root.fontFamily
++                                font.pixelSize: 10
++                                font.weight: Font.DemiBold
++                            }
++
++                            Rectangle {
++                                Layout.alignment: Qt.AlignHCenter
++                                width: keyBadgeText.implicitWidth + 10
++                                height: 14
++                                radius: 7
++                                color: "#141414"
++                                border.width: 1
++                                border.color: "#292929"
++
++                                Text {
++                                    id: keyBadgeText
++
++                                    anchors.centerIn: parent
++                                    text: String(actionTile.index + 1)
++                                    color: "#8d8d8d"
++                                    font.family: root.fontFamily
++                                    font.pixelSize: 8
++                                    font.weight: Font.Bold
++                                }
++                            }
++                        }
++
++                        MouseArea {
++                            anchors.fill: parent
++                            hoverEnabled: true
++                            cursorShape: Qt.PointingHandCursor
++                            onPressed: actionTile.beginHold()
++                            onReleased: actionTile.endHold()
++                            onCanceled: actionTile.endHold()
++                        }
++                    }
++                }
++            }
++        }
++    }
++}
+diff --git a/quickshell/modules/dynamicGlacier/SettingsPanel.qml b/quickshell/modules/dynamicGlacier/SettingsPanel.qml
+index f9e38f0..8f07d49 100644
+--- a/quickshell/modules/dynamicGlacier/SettingsPanel.qml
++++ b/quickshell/modules/dynamicGlacier/SettingsPanel.qml
+@@ -8,6 +8,7 @@ Item {
+     property int idleWidth: 340
+     property int idleHeight: 132
+     property string fontFamily: "Noto Sans"
++    property var fontOptions: []
+     property real morph: 0
+ 
+     readonly property color primaryText: "#f7f7f7"
+@@ -15,19 +16,22 @@ Item {
+     readonly property int panelPadding: 16
+     readonly property int headerHeight: 32
+     readonly property int glassRowHeight: 54
++    readonly property int fontRowHeight: 64
+     readonly property int sizeRowHeight: 64
+     readonly property int footerHeight: 28
+     readonly property int sectionSpacing: 10
+     readonly property real contentHeight: root.panelPadding * 2
+                                           + root.headerHeight
+                                           + root.glassRowHeight
++                                          + root.fontRowHeight
+                                           + root.sizeRowHeight
+                                           + root.footerHeight
+-                                          + root.sectionSpacing * 3
++                                          + root.sectionSpacing * 4
+     readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
+ 
+     signal closeRequested
+     signal liquidGlassRequested(bool enabled)
++    signal fontFamilyRequested(string family)
+     signal idleWidthRequested(int width)
+     signal idleHeightRequested(int height)
+     signal resetRequested
+@@ -293,6 +297,80 @@ Item {
+             }
+         }
+ 
++        Rectangle {
++            Layout.fillWidth: true
++            Layout.preferredHeight: root.fontRowHeight
++            radius: 14
++            color: "#080808"
++            border.width: 1
++            border.color: "#202020"
++
++            ColumnLayout {
++                anchors.fill: parent
++                anchors.margins: 10
++                spacing: 6
++
++                Text {
++                    Layout.fillWidth: true
++                    text: "FONT"
++                    color: "#a8a8a8"
++                    font.family: root.fontFamily
++                    font.pixelSize: 10
++                    font.weight: Font.DemiBold
++                }
++
++                RowLayout {
++                    Layout.fillWidth: true
++                    spacing: 6
++
++                    Repeater {
++                        model: root.fontOptions
++
++                        delegate: Rectangle {
++                            id: fontChip
++
++                            required property string modelData
++
++                            readonly property bool selected: fontChip.modelData === root.fontFamily
++
++                            Layout.fillWidth: true
++                            Layout.preferredHeight: 26
++                            radius: 8
++                            color: fontChip.selected ? "#f0f0f0" : (fontMouse.containsMouse ? "#181818" : "#0d0d0d")
++                            border.width: 1
++                            border.color: fontChip.selected ? "#f0f0f0" : "#242424"
++
++                            Behavior on color {
++                                ColorAnimation { duration: 140 }
++                            }
++
++                            Text {
++                                anchors.fill: parent
++                                anchors.margins: 4
++                                horizontalAlignment: Text.AlignHCenter
++                                verticalAlignment: Text.AlignVCenter
++                                elide: Text.ElideRight
++                                text: fontChip.modelData.replace(" Nerd Font Mono", "")
++                                color: fontChip.selected ? "#050505" : "#cfcfcf"
++                                font.family: fontChip.modelData
++                                font.pixelSize: 10
++                                font.weight: Font.Bold
++                            }
++
++                            MouseArea {
++                                id: fontMouse
++
++                                anchors.fill: parent
++                                hoverEnabled: true
++                                cursorShape: Qt.PointingHandCursor
++                                onClicked: root.fontFamilyRequested(fontChip.modelData)
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
+         RowLayout {
+             Layout.fillWidth: true
+             Layout.preferredHeight: root.sizeRowHeight
+diff --git a/quickshell/modules/dynamicGlacier/TimetablePanel.qml b/quickshell/modules/dynamicGlacier/TimetablePanel.qml
+new file mode 100644
+index 0000000..f693783
+--- /dev/null
++++ b/quickshell/modules/dynamicGlacier/TimetablePanel.qml
+@@ -0,0 +1,416 @@
++import QtQuick
++import QtQuick.Layouts
++
++Item {
++    id: root
++
++    property string fontFamily: "Noto Sans"
++    property real morph: 0
++
++    readonly property color primaryText: "#f7f7f7"
++    readonly property color secondaryText: "#777777"
++    readonly property color accentColor: "#4ade80"
++    readonly property color noteColor: "#f87171"
++    readonly property int panelPadding: 16
++    readonly property int headerHeight: 32
++    readonly property int tabsHeight: 28
++    readonly property int rowHeight: 36
++    readonly property int rowSpacing: 6
++    readonly property int sectionSpacing: 10
++    readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
++
++    readonly property real contentHeight: root.panelPadding * 2 + root.headerHeight + root.sectionSpacing + root.tabsHeight + root.sectionSpacing + root.dayBlocks.length * root.rowHeight + Math.max(0, root.dayBlocks.length - 1) * root.rowSpacing
++
++    signal closeRequested
++    signal settingsRequested
++
++    // Bell schedule: index = period number (0-8), [start, end].
++    readonly property var bellTimes: [
++        ["7:20", "8:05"],
++        ["8:15", "9:00"],
++        ["9:10", "9:55"],
++        ["10:10", "10:55"],
++        ["11:05", "11:50"],
++        ["12:00", "12:45"],
++        ["12:55", "13:40"],
++        ["14:10", "14:55"],
++        ["15:00", "15:45"]
++    ]
++
++    readonly property var dayLabels: ["Hét", "Ked", "Sze", "Csüt", "Pén"]
++
++    // One entry per weekday (Monday-Friday), each a list of class blocks in
++    // period order. A block's "p" range is inclusive and covers merged cells
++    // (e.g. a double lab period), matching how the printed timetable groups them.
++    readonly property var schedule: [
++        [
++            { p: [2, 2], subject: "Történelem", meta: "KA" },
++            { p: [3, 3], subject: "Hálózatok I. 11.t", meta: "K.O · 2. terem" },
++            { p: [4, 4], subject: "Matematika", meta: "" },
++            { p: [5, 5], subject: "Magyar", meta: "NL" },
++            { p: [6, 6], subject: "IKT Projektmunka II. 11.t", meta: "BAM · 2. terem" },
++            { p: [7, 8], subject: "Hálózatok I. 11.t/1", meta: "K.O · 31. terem" }
++        ],
++        [
++            { p: [1, 2], subject: "Testnevelés", meta: "TT", note: "GANF" },
++            { p: [3, 3], subject: "Angol 11 tim", meta: "" },
++            { p: [4, 4], subject: "Matematika", meta: "" },
++            { p: [5, 5], subject: "Fizika", meta: "BI" },
++            { p: [6, 6], subject: "Magyar", meta: "NL" },
++            { p: [7, 8], subject: "Hálózatok I. 11.t/2", meta: "K.O · 31. terem" }
++        ],
++        [
++            { p: [1, 1], subject: "Matematika", meta: "" },
++            { p: [2, 2], subject: "Történelem", meta: "KA" },
++            { p: [3, 3], subject: "Magyar", meta: "NL" },
++            { p: [4, 4], subject: "Fizika", meta: "BI" },
++            { p: [5, 5], subject: "Szakmai angol 11t", meta: "M.G · 2. terem" },
++            { p: [6, 6], subject: "Hálózatok I. 11.t", meta: "K.O · 31. terem" },
++            { p: [7, 8], subject: "Hálózatok I. 11.t/1", meta: "K.O · 31. terem" }
++        ],
++        [
++            { p: [1, 1], subject: "Matematika", meta: "" },
++            { p: [2, 2], subject: "Hálózatok I. 11.t", meta: "K.O · 35. terem" },
++            { p: [3, 4], subject: "Adatbázis-kezelés I. 11.t", meta: "A.P · 2. terem" },
++            { p: [5, 6], subject: "Angol 11 tim", meta: "" },
++            { p: [7, 8], subject: "Hálózatok I. 11.t/2", meta: "K.O · 31. terem" }
++        ],
++        [
++            { p: [0, 0], subject: "Angol 11 tim", meta: "", note: "!!!" },
++            { p: [1, 1], subject: "Szakmai angol 11t", meta: "MG" },
++            { p: [2, 2], subject: "Töri", meta: "KA" },
++            { p: [3, 3], subject: "Magyar", meta: "NL" },
++            { p: [4, 5], subject: "Adatbázis-kezelés I. 11.t", meta: "A.P · 2. terem" },
++            { p: [6, 6], subject: "OF", meta: "KA" },
++            { p: [7, 8], subject: "Testnevelés", meta: "TT", note: "GANF" }
++        ]
++    ]
++
++    // 0 = Monday .. 4 = Friday, -1 on a weekend (nothing to highlight).
++    readonly property int todayIndex: {
++        const jsDay = liveClock.now.getDay();
++        return jsDay >= 1 && jsDay <= 5 ? jsDay - 1 : -1;
++    }
++
++    property int selectedDayIndex: 0
++    readonly property var dayBlocks: root.schedule[root.selectedDayIndex]
++
++    function timeToMinutes(text) {
++        const parts = text.split(":");
++        return Number(parts[0]) * 60 + Number(parts[1]);
++    }
++
++    // Index of the block currently in progress, or -1. Only ever non-negative
++    // for the tab that also matches today, so switching days never leaves a
++    // stale "now" highlight behind.
++    function activeBlockIndex(dayIndex) {
++        if (dayIndex !== root.todayIndex)
++            return -1;
++
++        const nowMinutes = liveClock.now.getHours() * 60 + liveClock.now.getMinutes();
++        const blocks = root.schedule[dayIndex];
++
++        for (let i = 0; i < blocks.length; i++) {
++            const block = blocks[i];
++            const start = root.timeToMinutes(root.bellTimes[block.p[0]][0]);
++            const end = root.timeToMinutes(root.bellTimes[block.p[1]][1]);
++
++            if (nowMinutes >= start && nowMinutes < end)
++                return i;
++        }
++
++        return -1;
++    }
++
++    function periodLabel(block) {
++        return block.p[0] === block.p[1] ? (block.p[0] + ".") : (block.p[0] + "-" + block.p[1] + ".");
++    }
++
++    function timeLabel(block) {
++        return root.bellTimes[block.p[0]][0] + "–" + root.bellTimes[block.p[1]][1];
++    }
++
++    opacity: root.panelProgress
++    visible: opacity > 0.001
++    scale: 0.94 + 0.06 * root.panelProgress
++    transformOrigin: Item.Top
++
++    // Re-picks today's tab on every open, same as CalculatorPanel resetting
++    // its input — this panel is instantiated once at startup, long before it
++    // is ever shown for the first time.
++    onVisibleChanged: {
++        if (root.visible)
++            root.selectedDayIndex = root.todayIndex >= 0 ? root.todayIndex : 0;
++    }
++
++    Timer {
++        id: liveClock
++
++        property date now: new Date()
++
++        interval: 30000
++        running: root.visible
++        repeat: true
++        triggeredOnStart: true
++        onTriggered: now = new Date()
++    }
++
++    FocusScope {
++        id: timetableFocusScope
++
++        anchors.fill: parent
++        focus: true
++
++        Keys.onEscapePressed: root.closeRequested()
++
++        ColumnLayout {
++            anchors.fill: parent
++            anchors.margins: root.panelPadding
++            spacing: root.sectionSpacing
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.headerHeight
++                spacing: 10
++
++                Rectangle {
++                    Layout.preferredWidth: root.headerHeight
++                    Layout.preferredHeight: root.headerHeight
++                    radius: 11
++                    color: "#090909"
++                    border.width: 1
++                    border.color: "#232323"
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "calendar_month"
++                        size: 15
++                        color: root.primaryText
++                    }
++                }
++
++                Text {
++                    Layout.fillWidth: true
++                    text: "Órarend"
++                    color: root.primaryText
++                    elide: Text.ElideRight
++                    font.family: root.fontFamily
++                    font.pixelSize: 15
++                    font.weight: Font.Bold
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: settingsMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++                    scale: settingsMouse.pressed ? 0.86 : (settingsMouse.containsMouse ? 1.1 : 1)
++
++                    Behavior on scale {
++                        NumberAnimation { duration: 140; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
++                    }
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "settings"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: settingsMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.settingsRequested()
++                    }
++                }
++
++                Rectangle {
++                    Layout.preferredWidth: 20
++                    Layout.preferredHeight: 20
++                    radius: 10
++                    color: closeMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
++                    border.width: 1
++                    border.color: "#232323"
++                    scale: closeMouse.pressed ? 0.86 : (closeMouse.containsMouse ? 1.1 : 1)
++
++                    Behavior on scale {
++                        NumberAnimation { duration: 140; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
++                    }
++
++                    MIcon {
++                        anchors.centerIn: parent
++                        name: "close"
++                        size: 12
++                        color: "#999999"
++                    }
++
++                    MouseArea {
++                        id: closeMouse
++
++                        anchors.fill: parent
++                        hoverEnabled: true
++                        cursorShape: Qt.PointingHandCursor
++                        onClicked: root.closeRequested()
++                    }
++                }
++            }
++
++            RowLayout {
++                Layout.fillWidth: true
++                Layout.preferredHeight: root.tabsHeight
++                spacing: 6
++
++                Repeater {
++                    model: root.dayLabels
++
++                    Rectangle {
++                        id: dayTab
++
++                        required property string modelData
++                        required property int index
++
++                        readonly property bool selected: index === root.selectedDayIndex
++                        readonly property bool isToday: index === root.todayIndex
++
++                        Layout.fillWidth: true
++                        Layout.fillHeight: true
++                        radius: 8
++                        color: dayTab.selected ? "#1c2f22" : (dayMouse.containsMouse ? "#161616" : "#0a0a0a")
++                        border.width: 1
++                        border.color: dayTab.selected ? root.accentColor : "#232323"
++
++                        Behavior on color {
++                            ColorAnimation { duration: 140 }
++                        }
++
++                        Text {
++                            anchors.centerIn: parent
++                            text: dayTab.modelData
++                            color: dayTab.selected ? root.accentColor : root.secondaryText
++                            font.family: root.fontFamily
++                            font.pixelSize: 11
++                            font.weight: Font.DemiBold
++                        }
++
++                        Rectangle {
++                            visible: dayTab.isToday
++                            anchors.horizontalCenter: parent.horizontalCenter
++                            anchors.bottom: parent.bottom
++                            anchors.bottomMargin: 3
++                            width: 4
++                            height: 4
++                            radius: 2
++                            color: dayTab.selected ? root.accentColor : root.secondaryText
++                        }
++
++                        MouseArea {
++                            id: dayMouse
++
++                            anchors.fill: parent
++                            hoverEnabled: true
++                            cursorShape: Qt.PointingHandCursor
++                            onClicked: root.selectedDayIndex = dayTab.index
++                        }
++                    }
++                }
++            }
++
++            ColumnLayout {
++                Layout.fillWidth: true
++                Layout.fillHeight: true
++                spacing: root.rowSpacing
++
++                Repeater {
++                    model: root.dayBlocks
++
++                    Rectangle {
++                        id: blockRow
++
++                        required property var modelData
++                        required property int index
++
++                        readonly property bool isNow: index === root.activeBlockIndex(root.selectedDayIndex)
++
++                        Layout.fillWidth: true
++                        Layout.preferredHeight: root.rowHeight
++                        radius: 9
++                        color: blockRow.isNow ? "#12271a" : "#0a0a0a"
++                        border.width: 1
++                        border.color: blockRow.isNow ? root.accentColor : "#1c1c1c"
++
++                        RowLayout {
++                            anchors.fill: parent
++                            anchors.leftMargin: 10
++                            anchors.rightMargin: 10
++                            spacing: 10
++
++                            ColumnLayout {
++                                Layout.preferredWidth: 58
++                                spacing: 0
++
++                                Text {
++                                    text: root.periodLabel(blockRow.modelData)
++                                    color: blockRow.isNow ? root.accentColor : root.primaryText
++                                    font.family: root.fontFamily
++                                    font.pixelSize: 12
++                                    font.weight: Font.Bold
++                                }
++
++                                Text {
++                                    text: root.timeLabel(blockRow.modelData)
++                                    color: root.secondaryText
++                                    font.family: root.fontFamily
++                                    font.pixelSize: 9
++                                }
++                            }
++
++                            ColumnLayout {
++                                Layout.fillWidth: true
++                                spacing: 0
++
++                                RowLayout {
++                                    Layout.fillWidth: true
++                                    spacing: 6
++
++                                    Text {
++                                        Layout.fillWidth: true
++                                        text: blockRow.modelData.subject
++                                        color: root.primaryText
++                                        elide: Text.ElideRight
++                                        font.family: root.fontFamily
++                                        font.pixelSize: 12
++                                        font.weight: Font.DemiBold
++                                    }
++
++                                    Text {
++                                        visible: !!blockRow.modelData.note
++                                        text: blockRow.modelData.note ?? ""
++                                        color: root.noteColor
++                                        font.family: root.fontFamily
++                                        font.pixelSize: 10
++                                        font.weight: Font.Bold
++                                    }
++                                }
++
++                                Text {
++                                    Layout.fillWidth: true
++                                    visible: blockRow.modelData.meta !== ""
++                                    text: blockRow.modelData.meta
++                                    color: root.secondaryText
++                                    elide: Text.ElideRight
++                                    font.family: root.fontFamily
++                                    font.pixelSize: 10
++                                }
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++}
 diff --git a/quickshell/modules/dynamicGlacier/TrayIndicator.qml b/quickshell/modules/dynamicGlacier/TrayIndicator.qml
 index 6b95367..8c74d1e 100644
 --- a/quickshell/modules/dynamicGlacier/TrayIndicator.qml
@@ -1292,6 +3951,55 @@ index 0000000..1c14cb9
 +                    font.pixelSize: 10
 +                    font.weight: Font.DemiBold
 +                }
++            }
++        }
++    }
++}
+diff --git a/quickshell/modules/dynamicGlacier/WorkspaceDots.qml b/quickshell/modules/dynamicGlacier/WorkspaceDots.qml
+new file mode 100644
+index 0000000..dd4ce2f
+--- /dev/null
++++ b/quickshell/modules/dynamicGlacier/WorkspaceDots.qml
+@@ -0,0 +1,43 @@
++import QtQuick
++
++// A row of dots standing in for the clock while a workspace switch is in
++// flight. activeIndex is 1-based; 0 means nothing highlighted yet.
++Row {
++    id: root
++
++    property int count: 4
++    property int activeIndex: 0
++    property color dotColor: "#4ade80"
++    property color idleColor: "#3a3a3a"
++    property int dotSize: 8
++
++    height: root.dotSize
++    spacing: root.dotSize * 0.85
++
++    Repeater {
++        model: root.count
++
++        Rectangle {
++            id: dot
++
++            required property int index
++
++            readonly property bool active: root.activeIndex === dot.index + 1
++
++            width: root.dotSize
++            height: root.dotSize
++            radius: width / 2
++            anchors.verticalCenter: parent.verticalCenter
++            color: dot.active ? root.dotColor : root.idleColor
++            scale: dot.active ? 1.35 : 1
++
++            Behavior on color {
++                ColorAnimation { duration: 160 }
++            }
++
++            Behavior on scale {
++                NumberAnimation { duration: 220; easing.type: Easing.OutBack; easing.overshoot: 3 }
 +            }
 +        }
 +    }

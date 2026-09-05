@@ -68,11 +68,11 @@ hl.bind(mainMod .. " + code:86", function() zoomfunction(0.3) end, { repeating =
 hl.bind(mainMod .. " + Return",     hl.dsp.exec_cmd(launchPrefix .. TERMINAL))
 hl.bind(mainMod .. " + E",          hl.dsp.exec_cmd(launchPrefix .. FILE_MANAGER))
 hl.bind(mainMod .. " + T",          hl.dsp.exec_cmd(launchPrefix .. EDITOR))
-hl.bind(mainMod .. " + C",          hl.dsp.exec_cmd("quickshell ipc -p /usr/share/dynamic-glacier/quickshell call dynamicGlacier calculator"))
-hl.bind("XF86Calculator",           hl.dsp.exec_cmd("quickshell ipc -p /usr/share/dynamic-glacier/quickshell call dynamicGlacier calculator"))
-hl.bind(mainMod .. " + W",          hl.dsp.exec_cmd("quickshell ipc -p /usr/share/dynamic-glacier/quickshell call dynamicGlacier wallpaper"))
+hl.bind(mainMod .. " + C",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier calculator"))
+hl.bind("XF86Calculator",           hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier calculator"))
+hl.bind(mainMod .. " + W",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier wallpaper"))
 hl.bind("CONTROL + SHIFT + Escape", hl.dsp.exec_cmd(launchPrefix .. TERMINAL .. " -e btop"))
-hl.bind(mainMod .. " + D",          hl.dsp.exec_cmd("quickshell ipc -p /usr/share/dynamic-glacier/quickshell call dynamicGlacier apps"))
+hl.bind(mainMod .. " + D",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier apps"))
 
 ---------------------------
 ---- HARDWARE CONTROLS ----
@@ -147,7 +147,7 @@ hl.bind(mainMod .. " + CONTROL + mouse_down", hl.dsp.focus({ workspace = "m+1" }
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special" }))
 
 -- Dynamic island settings (font picker, liquid glass, idle size)
-hl.bind(mainMod .. " + S", hl.dsp.exec_cmd("quickshell ipc -p /usr/share/dynamic-glacier/quickshell call dynamicGlacier settings"))
+hl.bind(mainMod .. " + S", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier settings"))
 hl.bind(mainMod .. " + Space",     hl.dsp.workspace.toggle_special())
 
 -- Pop window out of the tiling grid to float freely
@@ -159,14 +159,17 @@ hl.bind(mainMod .. " + U", hl.dsp.window.float({ action = "toggle" }))
 
 -- Tapping SUPER alone (pressed and released with no other key) toggles
 -- the dynamic-glacier island open/closed, same as clicking its idle handle.
-hl.bind(mainMod .. " + SUPER_L", hl.dsp.exec_cmd("quickshell ipc -p /usr/share/dynamic-glacier/quickshell call dynamicGlacier toggleOpen"), { release = true })
+hl.bind(mainMod .. " + SUPER_L", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier toggleOpen"), { release = true })
+
+-- Timetable (Órarend) panel.
+hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier timetable"))
 
 -- Power menu: Lock, Logout, Sleep, Reboot, Shutdown (hold each to confirm).
 -- Super+L still locks directly and instantly, as it always has.
-hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd("quickshell ipc -p /usr/share/dynamic-glacier/quickshell call dynamicGlacier power"))
+hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier power"))
 
 -- Clipboard history (backed by cliphist, watched via wl-paste in autostart.lua)
-hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("quickshell ipc -p /usr/share/dynamic-glacier/quickshell call dynamicGlacier clipboard"))
+hl.bind(mainMod .. " + V", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier clipboard"))
 
 -- Switch the idle handle style between "bump" (default) and "strip" (small)
-hl.bind(mainMod .. " + H", hl.dsp.exec_cmd("quickshell ipc -p /usr/share/dynamic-glacier/quickshell call dynamicGlacier toggleHandle"))
+hl.bind(mainMod .. " + H", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier toggleHandle"))
