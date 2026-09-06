@@ -11,6 +11,7 @@ Item {
     property string body: ""
     property string artist: ""
     property string artUrl: ""
+    property string screenshotPath: ""
     property int volume: 0
     property bool muted: false
     property string volumeKind: "audio"
@@ -90,6 +91,18 @@ Item {
 
     property real timetableMorph: 0
     readonly property real timetablePanelHeight: islandContent.timetableContentHeight
+
+    property real timerMorph: 0
+    readonly property real timerPanelHeight: islandContent.timerContentHeight
+
+    property real todoMorph: 0
+    readonly property real todoPanelHeight: islandContent.todoContentHeight
+
+    property real themeMorph: 0
+    readonly property real themePanelHeight: islandContent.themeContentHeight
+
+    property real reminderMorph: 0
+    readonly property real reminderPanelHeight: islandContent.reminderContentHeight
 
     // 0 = island, 1 = volume HUD. Same mechanism as the two panels above, so the
     // pill grows out of the handle instead of being painted on top of it.
@@ -217,6 +230,12 @@ Item {
     signal clipboardHighlightNavRequested(int delta)
     signal clipboardActivateRequested
     signal timetableCloseRequested
+    signal timerCloseRequested
+    signal todoCloseRequested
+    signal themeCloseRequested
+    signal reminderCloseRequested
+    signal reminderFired(string text)
+    signal timerPhaseCompleted(string label)
     signal btSettingsRequested
     signal seekRequested(real position)
     signal handleStyleRequested(string style)
@@ -414,7 +433,7 @@ Item {
             z: 10
             anchors.fill: parent
             // Padding relaxes to zero as a panel takes over — panels bring their own.
-            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.calcMorph) * (1 - root.powerMorph) * (1 - root.clipboardMorph) * (1 - root.timetableMorph) * (1 - root.volumeMorph) : 0
+            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.calcMorph) * (1 - root.powerMorph) * (1 - root.clipboardMorph) * (1 - root.timetableMorph) * (1 - root.timerMorph) * (1 - root.todoMorph) * (1 - root.themeMorph) * (1 - root.reminderMorph) * (1 - root.volumeMorph) : 0
             wifiMorph: root.wifiMorph
             wifiMaxPanelHeight: root.wifiMaxPanelHeight
             btMorph: root.btMorph
@@ -428,6 +447,10 @@ Item {
             powerMorph: root.powerMorph
             clipboardMorph: root.clipboardMorph
             timetableMorph: root.timetableMorph
+            timerMorph: root.timerMorph
+            todoMorph: root.todoMorph
+            themeMorph: root.themeMorph
+            reminderMorph: root.reminderMorph
             volumeMorph: root.volumeMorph
             volumeKind: root.volumeKind
             mode: root.mode
@@ -441,6 +464,7 @@ Item {
             body: root.body
             artist: root.artist
             artUrl: root.artUrl
+            screenshotPath: root.screenshotPath
             volume: root.volume
             muted: root.muted
             playing: root.playing
@@ -575,6 +599,12 @@ Item {
             onClipboardHighlightNavRequested: delta => root.clipboardHighlightNavRequested(delta)
             onClipboardActivateRequested: root.clipboardActivateRequested()
             onTimetableCloseRequested: root.timetableCloseRequested()
+            onTimerCloseRequested: root.timerCloseRequested()
+            onTodoCloseRequested: root.todoCloseRequested()
+            onThemeCloseRequested: root.themeCloseRequested()
+            onReminderCloseRequested: root.reminderCloseRequested()
+            onReminderFired: text => root.reminderFired(text)
+            onTimerPhaseCompleted: label => root.timerPhaseCompleted(label)
             onBtSettingsRequested: root.btSettingsRequested()
             onSeekRequested: position => root.seekRequested(position)
             onHandleStyleRequested: style => root.handleStyleRequested(style)
@@ -584,7 +614,7 @@ Item {
     // Height is a plain binding, not part of the state, so it can re-target while
     // the morph is still running — the network list usually lands mid-transition,
     // and the app picker drawer opens long after the morph has settled.
-    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : (root.mode === "calc" ? Math.max(root.targetH, root.calcPanelHeight) : (root.mode === "power" ? Math.max(root.targetH, root.powerPanelHeight) : (root.mode === "clipboard" ? Math.max(root.targetH, root.clipboardPanelHeight) : (root.mode === "timetable" ? Math.max(root.targetH, root.timetablePanelHeight) : root.targetH)))))))))
+    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : (root.mode === "calc" ? Math.max(root.targetH, root.calcPanelHeight) : (root.mode === "power" ? Math.max(root.targetH, root.powerPanelHeight) : (root.mode === "clipboard" ? Math.max(root.targetH, root.clipboardPanelHeight) : (root.mode === "timetable" ? Math.max(root.targetH, root.timetablePanelHeight) : (root.mode === "timer" ? Math.max(root.targetH, root.timerPanelHeight) : (root.mode === "todo" ? Math.max(root.targetH, root.todoPanelHeight) : (root.mode === "theme" ? Math.max(root.targetH, root.themePanelHeight) : (root.mode === "reminder" ? Math.max(root.targetH, root.reminderPanelHeight) : root.targetH)))))))))))))
 
     state: root.mode !== "idle" ? root.mode : (root.forceExpanded ? "peek" : "collapsed")
 
@@ -604,6 +634,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -622,6 +656,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -640,6 +678,32 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "screenshot"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -658,6 +722,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -676,6 +744,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 1
             }
         },
@@ -694,6 +766,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -712,6 +788,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -730,6 +810,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -748,6 +832,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -766,6 +854,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -784,6 +876,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -802,6 +898,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -820,6 +920,10 @@ Item {
                 root.powerMorph: 1
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -838,6 +942,10 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 1
                 root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
                 root.volumeMorph: 0
             }
         },
@@ -856,6 +964,98 @@ Item {
                 root.powerMorph: 0
                 root.clipboardMorph: 0
                 root.timetableMorph: 1
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "timer"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.timetableMorph: 0
+                root.timerMorph: 1
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "todo"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 1
+                root.themeMorph: 0
+                root.reminderMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "theme"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 1
+                root.reminderMorph: 0
+                root.volumeMorph: 0
+            }
+        },
+        State {
+            name: "reminder"
+
+            PropertyChanges {
+                root.width: root.targetW
+                root.wifiMorph: 0
+                root.btMorph: 0
+                root.batteryMorph: 0
+                root.settingsMorph: 0
+                root.appsMorph: 0
+                root.wallpaperMorph: 0
+                root.calcMorph: 0
+                root.powerMorph: 0
+                root.clipboardMorph: 0
+                root.timetableMorph: 0
+                root.timerMorph: 0
+                root.todoMorph: 0
+                root.themeMorph: 0
+                root.reminderMorph: 1
                 root.volumeMorph: 0
             }
         }
@@ -1223,6 +1423,146 @@ Item {
                 }
             }
         },
+        // Morph into the timer. Same choreography as the other panels.
+        Transition {
+            to: "timer"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+
+                NumberAnimation {
+                    property: "timerMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "timer"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "timerMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Morph into the to-do list. Same choreography as the other panels.
+        Transition {
+            to: "todo"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+
+                NumberAnimation {
+                    property: "todoMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "todo"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "todoMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Morph into the theme picker. Same choreography as the other panels.
+        Transition {
+            to: "theme"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+
+                NumberAnimation {
+                    property: "themeMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "theme"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "themeMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        // Morph into the reminders list. Same choreography as the other panels.
+        Transition {
+            to: "reminder"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+
+                NumberAnimation {
+                    property: "reminderMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
+        Transition {
+            from: "reminder"
+
+            ParallelAnimation {
+                NumberAnimation {
+                    property: "width"
+                    duration: 300
+                    easing.type: Easing.InOutCubic
+                }
+
+                NumberAnimation {
+                    property: "reminderMorph"
+                    duration: 260
+                    easing.type: Easing.OutCubic
+                }
+            }
+        },
         // Volume HUD: the handle springs out sideways and the bar is already
         // there by the time the width settles, so the pill reads as one gesture
         // rather than a shape that fills in afterwards.
@@ -1269,7 +1609,7 @@ Item {
             }
 
             NumberAnimation {
-                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,calcMorph,powerMorph,clipboardMorph,timetableMorph,volumeMorph"
+                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,calcMorph,powerMorph,clipboardMorph,timetableMorph,timerMorph,todoMorph,themeMorph,reminderMorph,volumeMorph"
                 duration: 200
                 easing.type: Easing.OutCubic
             }

@@ -50,6 +50,7 @@ Scope {
     property string body: "Waiting for a signal"
     property string artist: ""
     property string artUrl: ""
+    property string screenshotPath: ""
     property int volume: 42
     property bool muted: false
     property bool volumeIndicatorVisible: false
@@ -105,6 +106,8 @@ Scope {
     readonly property int stripHeight: 4
     readonly property int notifyWidth: 438
     readonly property int notifyHeight: 74
+    readonly property int screenshotWidth: 220
+    readonly property int screenshotHeight: 140
     readonly property int mediaWidth: 380
     readonly property int mediaHeight: 132
     readonly property int volumeWidth: 244
@@ -140,6 +143,18 @@ Scope {
     readonly property int timetableWidth: 420
     readonly property int timetableMinHeight: 132
     readonly property int timetableMaxPanelHeight: 420
+    readonly property int timerWidth: 340
+    readonly property int timerMinHeight: 132
+    readonly property int timerMaxPanelHeight: 260
+    readonly property int todoWidth: 360
+    readonly property int todoMinHeight: 132
+    readonly property int todoMaxPanelHeight: 300
+    readonly property int themeWidth: 440
+    readonly property int themeMinHeight: 132
+    readonly property int themeMaxPanelHeight: 250
+    readonly property int reminderWidth: 400
+    readonly property int reminderMinHeight: 132
+    readonly property int reminderMaxPanelHeight: 420
 
     // Clipboard history (morphs the island into mode "clipboard"). Backed by
     // cliphist — Qt's own clipboard API can't reliably see copies made by
@@ -298,6 +313,8 @@ Scope {
         switch (root.visualMode) {
         case "notify":
             return root.notifyWidth;
+        case "screenshot":
+            return root.screenshotWidth;
         case "media":
             return root.mediaWidth;
         case "volume":
@@ -322,6 +339,14 @@ Scope {
             return root.clipboardWidth;
         case "timetable":
             return root.timetableWidth;
+        case "timer":
+            return root.timerWidth;
+        case "todo":
+            return root.todoWidth;
+        case "theme":
+            return root.themeWidth;
+        case "reminder":
+            return root.reminderWidth;
         default:
             if (root.interactionOpen)
                 return root.exitPreviewActive ? Math.max(root.peekWidth, root.exitPreviewWidth) : root.peekWidth;
@@ -333,6 +358,8 @@ Scope {
         switch (root.visualMode) {
         case "notify":
             return root.notifyHeight;
+        case "screenshot":
+            return root.screenshotHeight;
         case "media":
             return root.mediaHeight;
         case "volume":
@@ -357,6 +384,14 @@ Scope {
             return root.clipboardMinHeight;
         case "timetable":
             return root.timetableMinHeight;
+        case "timer":
+            return root.timerMinHeight;
+        case "todo":
+            return root.todoMinHeight;
+        case "theme":
+            return root.themeMinHeight;
+        case "reminder":
+            return root.reminderMinHeight;
         default:
             if (root.interactionOpen)
                 return root.peekHeight;
@@ -384,7 +419,7 @@ Scope {
     function scheduleInteractionClose() {
         // Detail panels are hover-owned even when the idle island was pinned.
         // Keeping the pinned state only applies to the compact idle peek.
-        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || !root.pinnedOpen)
+        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder" || !root.pinnedOpen)
             hoverLeaveTimer.restart();
     }
 
@@ -536,6 +571,15 @@ Scope {
         root.peekHeight = 132;
         root.fontFamily = root.fontOptions[1];
         root.saveVisualSettings();
+    }
+
+    // Shows a brief thumbnail of a just-taken screenshot, auto-dismissing
+    // like a notification (screenshot-region.sh calls this via IPC once the
+    // file is actually saved — cancelling the crop never fires it).
+    function showScreenshot(path) {
+        root.screenshotPath = path;
+        root.mode = "screenshot";
+        root.hold(3000);
     }
 
     function showNotification(summary, message, app, timeoutMs) {
@@ -1581,6 +1625,72 @@ Scope {
         panelFocusGrab.active = true;
     }
 
+    // Morphs the island into the timer (Pomodoro/Stopwatch), or collapses it
+    // back to idle if it is already showing. Mirrors toggleTimetablePanel.
+    // Note that unlike every other panel, this one keeps ticking in the
+    // background via its own Timers even while root.mode isn't "timer" —
+    // closing the panel must not pause a running Pomodoro or stopwatch.
+    function toggleTimerPanel() {
+        if (root.mode === "timer") {
+            root.showIdle();
+            return;
+        }
+
+        collapseTimer.stop();
+        root.exitPreviewActive = false;
+        root.mode = "timer";
+        panelFocusGrab.active = true;
+    }
+
+    // Morphs the island into the to-do list, or collapses it back to idle if
+    // it is already showing. Mirrors toggleTimetablePanel.
+    function toggleTodoPanel() {
+        if (root.mode === "todo") {
+            root.showIdle();
+            return;
+        }
+
+        collapseTimer.stop();
+        root.exitPreviewActive = false;
+        root.mode = "todo";
+        panelFocusGrab.active = true;
+    }
+
+    // Morphs the island into the theme picker, or collapses it back to idle
+    // if it is already showing. Mirrors toggleTodoPanel.
+    function toggleThemePanel() {
+        if (root.mode === "theme") {
+            root.showIdle();
+            return;
+        }
+
+        collapseTimer.stop();
+        root.exitPreviewActive = false;
+        root.mode = "theme";
+        panelFocusGrab.active = true;
+    }
+
+    // Morphs the island into the reminders list, or collapses it back to
+    // idle if it is already showing. Mirrors toggleThemePanel. Like the
+    // timer, reminders keep counting down in the background even while this
+    // isn't the active mode.
+    function toggleReminderPanel() {
+        if (root.mode === "reminder") {
+            root.showIdle();
+            return;
+        }
+
+        collapseTimer.stop();
+        root.exitPreviewActive = false;
+        root.mode = "reminder";
+        panelFocusGrab.active = true;
+    }
+
+    // Shared alert chime for a fired reminder or a completed Pomodoro phase.
+    function playAlertSound() {
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.config/hypr/scripts/play-alert.sh"]);
+    }
+
     // Morphs the island into the text calculator, or collapses it back to
     // idle if it is already showing. Mirrors toggleWallpaperPanel.
     function toggleCalculatorPanel() {
@@ -1872,7 +1982,7 @@ Scope {
         onTriggered: {
             root.pointerInside = false;
 
-            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable")
+            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder")
                 root.showIdle();
         }
     }
@@ -2438,7 +2548,7 @@ Scope {
         // Tall enough for the tallest expanded panel so the morph never clips.
         // The surface is transparent and input is limited to `mask`, so the extra
         // room costs nothing.
-        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 260, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32)
+        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 260, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32, root.timerMaxPanelHeight + 32, root.todoMaxPanelHeight + 32, root.themeMaxPanelHeight + 32, root.reminderMaxPanelHeight + 32)
         visible: true
 
         // end-4 already enables compositor blur for `quickshell:*` surfaces.
@@ -2509,6 +2619,7 @@ Scope {
                 body: root.body
                 artist: root.artist
                 artUrl: root.artUrl
+                screenshotPath: root.screenshotPath
                 volume: root.volume
                 muted: root.muted
                 volumeKind: root.volumeKind
@@ -2651,6 +2762,18 @@ Scope {
                 onClipboardHighlightNavRequested: delta => root.moveClipboardHighlight(delta)
                 onClipboardActivateRequested: root.activateClipboardHighlight()
                 onTimetableCloseRequested: root.closePanelToWideIdle(root.timetableWidth)
+                onTimerCloseRequested: root.closePanelToWideIdle(root.timerWidth)
+                onTodoCloseRequested: root.closePanelToWideIdle(root.todoWidth)
+                onThemeCloseRequested: root.closePanelToWideIdle(root.themeWidth)
+                onReminderCloseRequested: root.closePanelToWideIdle(root.reminderWidth)
+                onReminderFired: text => {
+                    root.showNotification("Reminder", text, "Reminders", 8000);
+                    root.playAlertSound();
+                }
+                onTimerPhaseCompleted: label => {
+                    root.showNotification(label, "", "Timer", 6200);
+                    root.playAlertSound();
+                }
                 onBtSettingsRequested: root.toggleBluetoothPanel()
                 onSeekRequested: position => root.mediaSeek(position)
                 onHandleStyleRequested: style => root.setHandleStyle(style)
@@ -2807,7 +2930,7 @@ Scope {
                 width: island.width
                 height: root.mode === "idle" && !root.interactionOpen ? Math.max(root.reservedZone, island.height) : island.height
                 hoverEnabled: true
-                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.visualMode === "calc" || root.visualMode === "power" || root.visualMode === "clipboard" || root.visualMode === "timetable" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
+                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.visualMode === "calc" || root.visualMode === "power" || root.visualMode === "clipboard" || root.visualMode === "timetable" || root.visualMode === "timer" || root.visualMode === "todo" || root.visualMode === "theme" || root.visualMode === "reminder" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
                 cursorShape: Qt.PointingHandCursor
                 onEntered: root.keepInteractionOpen(true)
                 onPositionChanged: mouse => root.maybeFinishExitPreview(mouse.x, width)
@@ -2856,7 +2979,7 @@ Scope {
         windows: [islandWindow]
 
         onCleared: {
-            if (root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable")
+            if (root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder")
                 root.showIdle();
         }
     }
@@ -2941,6 +3064,26 @@ Scope {
 
         function timetable(): void {
             root.toggleTimetablePanel();
+        }
+
+        function timer(): void {
+            root.toggleTimerPanel();
+        }
+
+        function todo(): void {
+            root.toggleTodoPanel();
+        }
+
+        function theme(): void {
+            root.toggleThemePanel();
+        }
+
+        function reminder(): void {
+            root.toggleReminderPanel();
+        }
+
+        function screenshotTaken(path: string): void {
+            root.showScreenshot(path);
         }
 
         function workspaceHint(id: string): void {

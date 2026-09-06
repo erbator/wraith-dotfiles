@@ -11,6 +11,7 @@ Item {
     property string body: ""
     property string artist: ""
     property string artUrl: ""
+    property string screenshotPath: ""
     property int volume: 0
     property bool muted: false
     property bool playing: false
@@ -135,6 +136,18 @@ Item {
     property real timetableMorph: 0
     readonly property real timetableContentHeight: timetableContent.contentHeight
 
+    property real timerMorph: 0
+    readonly property real timerContentHeight: timerContent.contentHeight
+
+    property real todoMorph: 0
+    readonly property real todoContentHeight: todoContent.contentHeight
+
+    property real themeMorph: 0
+    readonly property real themeContentHeight: themeContent.contentHeight
+
+    property real reminderMorph: 0
+    readonly property real reminderContentHeight: reminderContent.contentHeight
+
     property var favoriteAppEntries: []
     property var favoriteAppIds: []
     property var appsPickerEntries: []
@@ -188,7 +201,7 @@ Item {
     readonly property int favoriteAppCount: root.favoriteAppIds.length
 
     // Only one panel morph is ever non-zero, so the peek can react to whichever is running.
-    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph, root.calcMorph, root.powerMorph, root.clipboardMorph, root.timetableMorph)
+    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph, root.calcMorph, root.powerMorph, root.clipboardMorph, root.timetableMorph, root.timerMorph, root.todoMorph, root.themeMorph, root.reminderMorph)
 
     // The peek stays mounted through the morph so it can fade/shrink into the panel.
     readonly property bool peekVisible: (root.mode === "idle" && root.forceExpanded) || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps"
@@ -232,6 +245,12 @@ Item {
     signal wallpaperActivateRequested
     signal calcCloseRequested
     signal timetableCloseRequested
+    signal timerCloseRequested
+    signal todoCloseRequested
+    signal themeCloseRequested
+    signal reminderCloseRequested
+    signal reminderFired(string text)
+    signal timerPhaseCompleted(string label)
     signal powerCloseRequested
     signal powerActionRequested(string action)
     signal clipboardCloseRequested
@@ -1260,6 +1279,48 @@ Item {
         onSettingsRequested: root.glacierSettingsRequested()
     }
 
+    TimerPanel {
+        id: timerContent
+
+        anchors.fill: parent
+        fontFamily: root.fontFamily
+        morph: root.timerMorph
+        onCloseRequested: root.timerCloseRequested()
+        onSettingsRequested: root.glacierSettingsRequested()
+        onPhaseCompleted: label => root.timerPhaseCompleted(label)
+    }
+
+    ReminderPanel {
+        id: reminderContent
+
+        anchors.fill: parent
+        fontFamily: root.fontFamily
+        morph: root.reminderMorph
+        onCloseRequested: root.reminderCloseRequested()
+        onSettingsRequested: root.glacierSettingsRequested()
+        onReminderFired: text => root.reminderFired(text)
+    }
+
+    TodoPanel {
+        id: todoContent
+
+        anchors.fill: parent
+        fontFamily: root.fontFamily
+        morph: root.todoMorph
+        onCloseRequested: root.todoCloseRequested()
+        onSettingsRequested: root.glacierSettingsRequested()
+    }
+
+    ThemePanel {
+        id: themeContent
+
+        anchors.fill: parent
+        fontFamily: root.fontFamily
+        morph: root.themeMorph
+        onCloseRequested: root.themeCloseRequested()
+        onSettingsRequested: root.glacierSettingsRequested()
+    }
+
     PowerMenuPanel {
         id: powerContent
 
@@ -2005,6 +2066,35 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.glacierSettingsRequested()
             }
+        }
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 210
+            }
+        }
+    }
+
+    Rectangle {
+        id: screenshotContent
+
+        anchors.fill: parent
+        anchors.margins: 10
+        radius: 14
+        color: "#000000"
+        border.width: 1
+        border.color: "#232323"
+        clip: true
+        opacity: root.mode === "screenshot" ? 1 : 0
+        visible: opacity > 0
+
+        Image {
+            anchors.fill: parent
+            anchors.margins: 4
+            source: root.screenshotPath !== "" ? "file://" + root.screenshotPath : ""
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            cache: false
         }
 
         Behavior on opacity {

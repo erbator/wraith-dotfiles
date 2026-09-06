@@ -67,7 +67,7 @@ hl.bind(mainMod .. " + code:86", function() zoomfunction(0.3) end, { repeating =
 
 hl.bind(mainMod .. " + Return",     hl.dsp.exec_cmd(launchPrefix .. TERMINAL))
 hl.bind(mainMod .. " + E",          hl.dsp.exec_cmd(launchPrefix .. FILE_MANAGER))
-hl.bind(mainMod .. " + T",          hl.dsp.exec_cmd(launchPrefix .. EDITOR))
+hl.bind(mainMod .. " + T",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier timer"))
 hl.bind(mainMod .. " + C",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier calculator"))
 hl.bind("XF86Calculator",           hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier calculator"))
 hl.bind(mainMod .. " + W",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier wallpaper"))
@@ -110,6 +110,7 @@ hl.bind(mainMod .. " + L", hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/share/q
 
 -- Screen Capture
 hl.bind(mainMod .. " + P",     hl.dsp.exec_cmd("hyprpicker -a -n"))
+hl.bind("Print",              hl.dsp.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/screenshot-region.sh"))
 
 -------------------------------
 ---- WORKSPACES & MONITORS ----
@@ -163,6 +164,15 @@ hl.bind(mainMod .. " + SUPER_L", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glac
 
 -- Timetable (Órarend) panel.
 hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier timetable"))
+
+-- To-do list panel.
+hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier todo"))
+
+-- Theme picker (borders, Kitty, Alacritty).
+hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier theme"))
+
+-- Reminders (pop up + alert sound when they fire; also used by the timer).
+hl.bind(mainMod .. " + R", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier reminder"))
 
 -- Power menu: Lock, Logout, Sleep, Reboot, Shutdown (hold each to confirm).
 -- Super+L still locks directly and instantly, as it always has.

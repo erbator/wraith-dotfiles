@@ -1,0 +1,128 @@
+[
+  {
+    "id": "gruvbox",
+    "name": "Gruvbox",
+    "mode": "dark",
+    "accent": "#7daea3",
+    "background": "#282828",
+    "darkBackground": "#1e1e1e",
+    "foreground": "#d4be98",
+    "muted": "#665c54",
+    "colors": {
+      "red": "#ea6962",
+      "yellow": "#d8a657",
+      "green": "#a9b665",
+      "cyan": "#89b482",
+      "blue": "#7daea3",
+      "magenta": "#d3869b"
+    }
+  },
+  {
+    "id": "gruvbox-material",
+    "name": "Gruvbox Material",
+    "mode": "dark",
+    "accent": "#7daea3",
+    "background": "#282828",
+    "darkBackground": "#1e1e1e",
+    "foreground": "#dfbf8e",
+    "muted": "#665c54",
+    "colors": {
+      "red": "#ea6962",
+      "yellow": "#e78a4e",
+      "green": "#a9b665",
+      "cyan": "#89b482",
+      "blue": "#7daea3",
+      "magenta": "#d3869b"
+    }
+  },
+  {
+    "id": "kanagawa",
+    "name": "Kanagawa",
+    "mode": "dark",
+    "accent": "#7e9cd8",
+    "background": "#1f1f28",
+    "darkBackground": "#17171e",
+    "foreground": "#dcd7ba",
+    "muted": "#54546d",
+    "colors": {
+      "red": "#c34043",
+      "yellow": "#c0a36e",
+      "green": "#76946a",
+      "cyan": "#6a9589",
+      "blue": "#7e9cd8",
+      "magenta": "#957fb8"
+    }
+  },
+  {
+    "id": "everblush",
+    "name": "Everblush",
+    "mode": "dark",
+    "accent": "#67b0e8",
+    "background": "#141b1e",
+    "darkBackground": "#0d1214",
+    "foreground": "#dadada",
+    "muted": "#3b4245",
+    "colors": {
+      "red": "#e57474",
+      "yellow": "#e5c76b",
+      "green": "#8ccf7e",
+      "cyan": "#6cbfbf",
+      "blue": "#67b0e8",
+      "magenta": "#c47fd5"
+    }
+  },
+  {
+    "id": "industrial",
+    "name": "Industrial",
+    "mode": "dark",
+    "accent": "#c9a227",
+    "background": "#1b1c1d",
+    "darkBackground": "#131414",
+    "foreground": "#c9c9c7",
+    "muted": "#5b5d5e",
+    "colors": {
+      "red": "#b5544a",
+      "yellow": "#c9a227",
+      "green": "#6f8f6a",
+      "cyan": "#5f8a8f",
+      "blue": "#5b7a99",
+      "magenta": "#8a7a8f"
+    }
+  },
+  {
+    "id": "e-ink",
+    "name": "E-Ink",
+    "mode": "light",
+    "accent": "#3a94c5",
+    "background": "#cccccc",
+    "darkBackground": "#333333",
+    "foreground": "#5e5e5e",
+    "muted": "#7c7c7c",
+    "colors": {
+      "red": "#f85552",
+      "yellow": "#dfa000",
+      "green": "#8da101",
+      "cyan": "#35a77c",
+      "blue": "#3a94c5",
+      "magenta": "#df69ba"
+    }
+  },
+  {
+    "id": "monochrome",
+    "name": "Monochrome",
+    "mode": "dark",
+    "accent": "#d6d6d6",
+    "background": "#050505",
+    "darkBackground": "#020202",
+    "foreground": "#d4d4d4",
+    "muted": "#8d8d8d",
+    "colors": {
+      "red": "#8c8c8c",
+      "yellow": "#a8a8a8",
+      "green": "#9a9a9a",
+      "cyan": "#b5b5b5",
+      "blue": "#7f7f7f",
+      "magenta": "#c8c8c8"
+    }
+  }
+]
