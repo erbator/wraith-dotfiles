@@ -2109,7 +2109,9 @@ Item {
         Image {
             anchors.fill: parent
             anchors.margins: 4
-            source: root.screenshotPath !== "" ? "file://" + root.screenshotPath : ""
+            // Plain absolute path — QML's url coercion handles file:// and
+            // spaces correctly; hand-built "file://" + path does not.
+            source: root.screenshotPath
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             cache: false

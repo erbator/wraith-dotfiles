@@ -159,6 +159,24 @@ Scope {
     readonly property int weatherMinHeight: 132
     readonly property int weatherMaxPanelHeight: 590
 
+    // Modes that morph the island into a full detail panel. These are
+    // hover-owned: they close when the pointer leaves the island, and they
+    // don't take clicks on the idle hitbox. Adding a panel means adding it
+    // here (and, if it needs the keyboard, to keyboardPanelModes) — not to
+    // four separate hand-written `mode === ...` chains.
+    readonly property var detailPanelModes: ["wifi", "bluetooth", "battery", "settings", "apps", "wallpaper", "calc", "power", "clipboard", "timetable", "timer", "todo", "theme", "reminder", "weather"]
+    // The subset that holds a keyboard grab while open; losing the grab
+    // (e.g. clicking another window) closes them.
+    readonly property var keyboardPanelModes: ["apps", "wallpaper", "calc", "power", "clipboard", "timetable", "timer", "todo", "theme", "reminder", "weather"]
+
+    function isDetailPanel(mode) {
+        return root.detailPanelModes.indexOf(mode) !== -1;
+    }
+
+    function isKeyboardPanel(mode) {
+        return root.keyboardPanelModes.indexOf(mode) !== -1;
+    }
+
     // Clipboard history (morphs the island into mode "clipboard"). Backed by
     // cliphist — Qt's own clipboard API can't reliably see copies made by
     // other apps while unfocused on Wayland; cliphist watches via the
@@ -433,7 +451,7 @@ Scope {
     function scheduleInteractionClose() {
         // Detail panels are hover-owned even when the idle island was pinned.
         // Keeping the pinned state only applies to the compact idle peek.
-        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder" || root.mode === "weather" || !root.pinnedOpen)
+        if (root.isDetailPanel(root.mode) || !root.pinnedOpen)
             hoverLeaveTimer.restart();
     }
 
@@ -593,6 +611,7 @@ Scope {
     function showScreenshot(path) {
         root.screenshotPath = path;
         root.mode = "screenshot";
+        panelFocusGrab.active = false;
         root.hold(3000);
     }
 
@@ -602,6 +621,10 @@ Scope {
         root.body = message || "";
         root.artUrl = "";
         root.mode = "notify";
+        // The banner replaces whatever keyboard panel was open, but the grab
+        // that panel took stayed held for the banner's whole duration — up to
+        // 8s of not being able to type anywhere after a reminder fired.
+        panelFocusGrab.active = false;
         root.hold(timeoutMs > 0 ? timeoutMs : 5200);
     }
 
@@ -2099,7 +2122,7 @@ Scope {
         onTriggered: {
             root.pointerInside = false;
 
-            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder" || root.mode === "weather")
+            if (root.exitPreviewActive || root.isDetailPanel(root.mode))
                 root.showIdle();
         }
     }
@@ -3050,7 +3073,7 @@ Scope {
                 width: island.width
                 height: root.mode === "idle" && !root.interactionOpen ? Math.max(root.reservedZone, island.height) : island.height
                 hoverEnabled: true
-                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.visualMode === "calc" || root.visualMode === "power" || root.visualMode === "clipboard" || root.visualMode === "timetable" || root.visualMode === "timer" || root.visualMode === "todo" || root.visualMode === "theme" || root.visualMode === "reminder" || root.visualMode === "weather" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
+                acceptedButtons: root.visualMode === "media" || root.isDetailPanel(root.visualMode) || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
                 cursorShape: Qt.PointingHandCursor
                 onEntered: root.keepInteractionOpen(true)
                 onPositionChanged: mouse => root.maybeFinishExitPreview(mouse.x, width)
@@ -3099,7 +3122,7 @@ Scope {
         windows: [islandWindow]
 
         onCleared: {
-            if (root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder" || root.mode === "weather")
+            if (root.isKeyboardPanel(root.mode))
                 root.showIdle();
         }
     }

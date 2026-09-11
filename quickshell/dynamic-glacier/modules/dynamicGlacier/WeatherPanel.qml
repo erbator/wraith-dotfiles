@@ -10,7 +10,7 @@ Item {
 
     readonly property color primaryText: "#f7f7f7"
     readonly property color secondaryText: "#777777"
-    readonly property color accentColor: "#5b9cf0"
+    readonly property color accentColor: "#4ade80"
     readonly property int panelPadding: 16
     readonly property int headerHeight: 32
     readonly property int sectionSpacing: 8
@@ -31,11 +31,13 @@ Item {
     // Fixed to a specific city rather than IP geolocation (unreliable — often
     // resolves to the ISP's regional hub, not the actual town).
     readonly property string locationName: "Kecskemét"
-    readonly property string weatherUrl: "https://api.open-meteo.com/v1/forecast?latitude=46.90618&longitude=19.69128&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,precipitation,is_day,uv_index&hourly=temperature_2m,weather_code,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max,sunrise,sunset&timezone=auto&forecast_days=7"
+    readonly property string weatherUrl: "https://api.open-meteo.com/v1/forecast?latitude=46.90618&longitude=19.69128&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,precipitation,is_day,uv_index&hourly=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=7"
 
     property var weatherData: null
     property bool weatherLoaded: false
     property string weatherError: ""
+    property real lastFetchedAt: 0
+    readonly property int refreshIntervalMs: 15 * 60 * 1000
 
     function refreshWeather() {
         weatherFetchProcess.running = false;
@@ -49,6 +51,7 @@ Item {
             if (parsed && parsed.current && parsed.hourly && parsed.daily) {
                 root.weatherData = parsed;
                 root.weatherError = "";
+                root.lastFetchedAt = Date.now();
             } else {
                 root.weatherError = "Couldn't load weather";
             }
@@ -69,7 +72,7 @@ Item {
     }
 
     Timer {
-        interval: 900000
+        interval: root.refreshIntervalMs
         running: true
         repeat: true
         triggeredOnStart: true
@@ -191,6 +194,18 @@ Item {
     readonly property var info: root.weatherInfo(root.weatherCode, root.isDay)
     readonly property var stops: root.gradientStops(root.info.effect, root.isDay)
 
+    // Animations only run while this panel is actually on screen. QML keeps
+    // ticking animations on invisible items, and this panel is instantiated
+    // at startup like every other one — without these gates ~40 infinite
+    // particle/ray/twinkle animations would burn CPU 24/7 behind a closed
+    // island, which on a laptop is a real battery cost.
+    readonly property bool sunActive: root.visible && root.info.effect === "sun"
+    readonly property bool nightActive: root.visible && root.info.effect === "night"
+    readonly property bool cloudActive: root.visible && (root.info.effect === "cloudy" || root.info.effect === "fog")
+    readonly property bool rainActive: root.visible && (root.info.effect === "rain" || root.info.effect === "storm")
+    readonly property bool stormActive: root.visible && root.info.effect === "storm"
+    readonly property bool snowActive: root.visible && root.info.effect === "snow"
+
     readonly property var hourlyEntries: {
         if (!root.weatherData)
             return [];
@@ -209,7 +224,7 @@ Item {
             entries.push({
                 hourLabel: i === startIndex ? "Now" : String(new Date(hourly.time[i]).getHours()),
                 temp: Math.round(hourly.temperature_2m[i]),
-                icon: root.weatherInfo(hourly.weather_code[i], true).icon
+                icon: root.weatherInfo(hourly.weather_code[i], hourly.is_day ? hourly.is_day[i] === 1 : true).icon
             });
         }
 
@@ -248,7 +263,12 @@ Item {
         if (root.visible) {
             weatherFocusScope.forceActiveFocus();
 
-            if (!root.weatherLoaded)
+            // The startup fetch usually fires before the network is up after
+            // login, so a failed/never-completed fetch used to leave the
+            // panel saying "Couldn't load weather" for up to 15 minutes.
+            // Retry whenever the last good fetch is missing, failed, or older
+            // than the refresh interval.
+            if (root.weatherError !== "" || root.weatherData === null || Date.now() - root.lastFetchedAt > root.refreshIntervalMs)
                 root.refreshWeather();
         }
     }
@@ -396,7 +416,7 @@ Item {
                 // --- Sun (clear day): glow + slowly rotating rays -----------
                 Item {
                     anchors.fill: parent
-                    visible: root.info.effect === "sun"
+                    visible: root.sunActive
 
                     Item {
                         anchors.right: parent.right
@@ -419,6 +439,7 @@ Item {
                                 opacity: 0.25
 
                                 RotationAnimation on rotation {
+                                    running: root.sunActive
                                     from: index * 45
                                     to: index * 45 + 360
                                     duration: 60000
@@ -435,6 +456,7 @@ Item {
                             color: "#fff2c2"
 
                             SequentialAnimation on opacity {
+                                running: root.sunActive
                                 loops: Animation.Infinite
                                 NumberAnimation {
                                     to: 0.75
@@ -454,7 +476,7 @@ Item {
                 // --- Night (clear): twinkling stars -------------------------
                 Item {
                     anchors.fill: parent
-                    visible: root.info.effect === "night"
+                    visible: root.nightActive
 
                     Repeater {
                         model: 16
@@ -470,6 +492,7 @@ Item {
                             color: "#ffffff"
 
                             SequentialAnimation on opacity {
+                                running: root.nightActive
                                 loops: Animation.Infinite
                                 PropertyAction {
                                     value: 0.4
@@ -495,7 +518,7 @@ Item {
                 // --- Cloudy: soft drifting cloud blobs ----------------------
                 Item {
                     anchors.fill: parent
-                    visible: root.info.effect === "cloudy" || root.info.effect === "fog"
+                    visible: root.cloudActive
                     clip: true
 
                     Repeater {
@@ -512,6 +535,7 @@ Item {
                             y: 16 + index * 34
 
                             NumberAnimation on x {
+                                running: root.cloudActive
                                 from: -100
                                 to: hero.width + 20
                                 duration: 26000 + index * 9000
@@ -524,7 +548,7 @@ Item {
                 // --- Rain / storm: falling streaks ---------------------------
                 Item {
                     anchors.fill: parent
-                    visible: root.info.effect === "rain" || root.info.effect === "storm"
+                    visible: root.rainActive
                     clip: true
 
                     Repeater {
@@ -533,7 +557,14 @@ Item {
                         Rectangle {
                             required property int index
 
-                            x: Math.random() * Math.max(1, hero.width)
+                            // A fixed random *fraction*, scaled by the width: binding
+                            // `x` straight to `Math.random() * hero.width` re-rolled
+                            // the random number every time the width changed — i.e.
+                            // throughout every open/close morph — so the drops
+                            // visibly teleported around while the panel animated.
+                            readonly property real xFraction: Math.random()
+
+                            x: xFraction * hero.width
                             width: 2
                             height: 14
                             radius: 1
@@ -542,6 +573,7 @@ Item {
                             rotation: 12
 
                             NumberAnimation on y {
+                                running: root.rainActive
                                 from: -20
                                 to: root.heroHeight + 20
                                 duration: 450 + Math.random() * 350
@@ -554,9 +586,10 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         color: "#ffffff"
-                        visible: root.info.effect === "storm"
+                        visible: root.stormActive
 
                         SequentialAnimation on opacity {
+                            running: root.stormActive
                             loops: Animation.Infinite
                             PropertyAction {
                                 value: 0
@@ -579,7 +612,7 @@ Item {
                 // --- Snow: drifting flakes -----------------------------------
                 Item {
                     anchors.fill: parent
-                    visible: root.info.effect === "snow"
+                    visible: root.snowActive
                     clip: true
 
                     Repeater {
@@ -592,11 +625,12 @@ Item {
                             // sway target is a fixed number, not a binding
                             // that reads the very property being animated —
                             // `to: x + 14` would chase a moving target and
-                            // never actually converge.
-                            readonly property real baseX: Math.random() * Math.max(1, hero.width)
+                            // never actually converge. xFraction is a fixed
+                            // random number for the same reason as the rain.
+                            readonly property real xFraction: Math.random()
                             property real drift
 
-                            x: baseX + drift
+                            x: xFraction * hero.width + drift
                             width: 3
                             height: 3
                             radius: 1.5
@@ -604,6 +638,7 @@ Item {
                             opacity: 0.7
 
                             NumberAnimation on y {
+                                running: root.snowActive
                                 from: -10
                                 to: root.heroHeight + 10
                                 duration: 3500 + Math.random() * 2500
@@ -611,6 +646,7 @@ Item {
                             }
 
                             SequentialAnimation on drift {
+                                running: root.snowActive
                                 loops: Animation.Infinite
                                 NumberAnimation {
                                     to: 14

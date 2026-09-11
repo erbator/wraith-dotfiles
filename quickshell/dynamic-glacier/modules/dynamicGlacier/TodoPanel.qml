@@ -106,6 +106,7 @@ Item {
 
         path: root.todosPath
         preload: true
+        atomicWrites: true
         printErrors: false
         onLoaded: root.applyTodosJson(todosFile.text())
         onLoadFailed: root.todosLoaded = true
@@ -117,8 +118,10 @@ Item {
     transformOrigin: Item.Top
 
     onVisibleChanged: {
+        // Straight into the text field: opening via Super+B and typing did
+        // nothing until you clicked the field.
         if (root.visible)
-            todoFocusScope.forceActiveFocus();
+            taskInput.forceActiveFocus();
     }
 
     FocusScope {

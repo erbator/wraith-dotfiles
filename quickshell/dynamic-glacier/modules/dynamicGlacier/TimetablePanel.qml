@@ -171,6 +171,11 @@ Item {
     // startup, long before it is ever shown for the first time.
     onVisibleChanged: {
         if (root.visible) {
+            // liveClock only ticks while the panel is visible, so `now` (and
+            // todayIndex derived from it) can be days old here — refresh it
+            // before picking the tab, or a shell left running over midnight
+            // opens on yesterday's day.
+            liveClock.now = new Date();
             root.selectedDayIndex = root.todayIndex >= 0 ? root.todayIndex : 0;
             timetableFocusScope.forceActiveFocus();
         }

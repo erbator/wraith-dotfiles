@@ -62,7 +62,7 @@ Item {
     property var selectedDate: root.startOfDay(new Date())
 
     property string draftText: ""
-    property string draftTime: "09:00"
+    property string draftTime: ""
 
     function nextId() {
         root.idCounter += 1;
@@ -86,6 +86,19 @@ Item {
         root.viewYear = today.getFullYear();
         root.viewMonth = today.getMonth();
         root.selectedDate = root.startOfDay(today);
+    }
+
+    // Next half-hour boundary from now, so the quick-add row opens with a
+    // time that's already valid instead of a fixed "09:00" that has usually
+    // passed by the time the panel is opened.
+    function suggestedTime() {
+        const next = new Date(Date.now() + 30 * 60000);
+        const minutes = next.getMinutes() < 30 ? 30 : 0;
+
+        if (minutes === 0)
+            next.setHours(next.getHours() + 1);
+
+        return String(next.getHours() % 24).padStart(2, "0") + ":" + String(minutes).padStart(2, "0");
     }
 
     function selectDay(day) {
@@ -167,7 +180,12 @@ Item {
         return new Date(root.selectedDate.getFullYear(), root.selectedDate.getMonth(), root.selectedDate.getDate(), root.parsedDraftTime.hours, root.parsedDraftTime.minutes).getTime();
     }
 
-    readonly property bool canConfirm: root.draftText.trim() !== "" && root.pendingFireAt !== null && root.pendingFireAt > Date.now()
+    // Compared against the ticking `now`, not Date.now(): a plain Date.now()
+    // in a binding is only sampled when the *other* dependencies change, so
+    // a time typed 1 minute out stayed "valid" indefinitely and could be
+    // added after it had already passed.
+    readonly property bool timeInPast: root.pendingFireAt !== null && root.pendingFireAt <= root.now
+    readonly property bool canConfirm: root.draftText.trim() !== "" && root.pendingFireAt !== null && !root.timeInPast
 
     function confirmReminder() {
         if (!root.canConfirm)
@@ -241,6 +259,7 @@ Item {
 
         path: root.remindersPath
         preload: true
+        atomicWrites: true
         printErrors: false
         onLoaded: root.applyRemindersJson(remindersFile.text())
         onLoadFailed: root.remindersLoaded = true
@@ -264,7 +283,10 @@ Item {
     onVisibleChanged: {
         if (root.visible) {
             root.goToToday();
-            reminderFocusScope.forceActiveFocus();
+            timeInput.text = root.suggestedTime();
+            // Straight into the text field: opening via Super+R and typing
+            // did nothing until you clicked the field.
+            reminderTextInput.forceActiveFocus();
         }
     }
 
@@ -672,7 +694,12 @@ Item {
                     radius: 8
                     color: "#0a0a0a"
                     border.width: 1
-                    border.color: timeInput.activeFocus ? root.accentColor : (root.parsedDraftTime ? "#232323" : "#4a2a2a")
+                    // Red-tinted both when the text isn't a time at all and
+                    // when it parses to a moment that has already passed, so
+                    // a disabled add button is never a silent mystery.
+                    readonly property bool timeInvalid: !root.parsedDraftTime || root.timeInPast
+
+                    border.color: timeInput.activeFocus && !timeInvalid ? root.accentColor : (timeInvalid ? "#7a3a3a" : "#232323")
 
                     TextInput {
                         id: timeInput
@@ -680,7 +707,7 @@ Item {
                         anchors.fill: parent
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
-                        color: root.primaryText
+                        color: parent.timeInvalid ? "#f0736a" : root.primaryText
                         font.family: root.fontFamily
                         font.pixelSize: 12
                         maximumLength: 5

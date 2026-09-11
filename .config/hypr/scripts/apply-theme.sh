@@ -108,4 +108,9 @@ EOF
 
 hyprctl reload >/dev/null 2>&1 || true
 
+# Kitty re-reads its config on SIGUSR1, so open terminals pick up the new
+# colors immediately instead of only new windows. (Alacritty already
+# live-reloads the imported theme file on its own.)
+pkill -USR1 -x kitty 2>/dev/null || true
+
 echo "$theme_id" > "$HOME/.config/hypr/themes/current"

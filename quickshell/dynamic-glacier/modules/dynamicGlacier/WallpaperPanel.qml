@@ -245,6 +245,10 @@ Item {
                     cacheBuffer: 400
                     currentIndex: root.highlightIndex
 
+                    // 47 folders is 16 rows with only 3 visible — arrow keys
+                    // moved the highlight off-screen without following it.
+                    onCurrentIndexChanged: wallpaperGrid.positionViewAtIndex(wallpaperGrid.currentIndex, GridView.Contain)
+
                     delegate: Item {
                         id: wallpaperTile
 

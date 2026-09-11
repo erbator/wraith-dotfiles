@@ -15,14 +15,26 @@ geometry=$(slurp -d) || exit 0
 timestamp=$(date +%Y-%m-%d_%H-%M-%S)
 output_path="$screenshot_dir/screenshot_${timestamp}.png"
 
-# Clear the clipboard first so that, afterwards, an empty clipboard reliably
-# means "nothing was copied" (e.g. Escape) rather than a stale old shot.
-wl-copy --clear 2>/dev/null || true
+# Fingerprint the clipboard instead of clearing it: clearing meant that
+# cancelling satty with Escape left the user with an empty clipboard.
+clipboard_fingerprint() {
+    wl-paste --type image/png 2>/dev/null | md5sum | cut -d' ' -f1
+}
+
+before=$(clipboard_fingerprint)
 
 grim -g "$geometry" - | satty --filename - -o "$output_path"
 
+# Nothing saved explicitly — see whether satty put a *new* image on the
+# clipboard (the default Enter action). Same fingerprint as before means the
+# user backed out, so leave both the clipboard and the disk alone.
 if [ ! -s "$output_path" ]; then
-    wl-paste --type image/png > "$output_path" 2>/dev/null || true
+    after=$(clipboard_fingerprint)
+
+    if [ "$after" != "$before" ]; then
+        wl-paste --type image/png > "$output_path" 2>/dev/null || true
+    fi
+
     [ -s "$output_path" ] || rm -f "$output_path"
 fi
 
