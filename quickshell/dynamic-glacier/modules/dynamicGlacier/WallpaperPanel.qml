@@ -13,6 +13,13 @@ Item {
     property bool applying: false
     property int highlightIndex: 0
     property string fontFamily: "Noto Sans"
+
+    // SF Pro Display is an optical size drawn for 20px and up; below that it
+    // reads small and thin, so the sub-20px sizes get bumped whenever it is
+    // the selected family. Every other family (all monospace) is unchanged.
+    function fontPx(size) {
+        return root.fontFamily === "SF Pro Display" && size < 20 ? Math.round(size * 1.2) : size;
+    }
     property real morph: 0
 
     readonly property color primaryText: "#f7f7f7"
@@ -125,7 +132,7 @@ Item {
                         color: root.primaryText
                         elide: Text.ElideRight
                         font.family: root.fontFamily
-                        font.pixelSize: 15
+                        font.pixelSize: root.fontPx(15)
                         font.weight: Font.Bold
                     }
 
@@ -135,7 +142,7 @@ Item {
                         color: root.statusText !== "" ? "#f0736a" : root.secondaryText
                         elide: Text.ElideRight
                         font.family: root.fontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: root.fontPx(11)
                         font.weight: Font.DemiBold
                     }
                 }
@@ -228,7 +235,7 @@ Item {
                     color: root.secondaryText
                     visible: root.entries.length === 0
                     font.family: root.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: root.fontPx(12)
                     font.weight: Font.DemiBold
                 }
 
@@ -324,7 +331,7 @@ Item {
                                         color: "#f0f0f0"
                                         elide: Text.ElideRight
                                         font.family: root.fontFamily
-                                        font.pixelSize: 9
+                                        font.pixelSize: root.fontPx(9)
                                         font.weight: Font.DemiBold
                                     }
                                 }
@@ -377,7 +384,7 @@ Item {
                     color: "#606060"
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: 10
+                    font.pixelSize: root.fontPx(10)
                     font.weight: Font.DemiBold
                 }
             }

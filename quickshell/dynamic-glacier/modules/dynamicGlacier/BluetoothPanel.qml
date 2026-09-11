@@ -11,6 +11,13 @@ Item {
     property string connectedDeviceName: ""
     property string statusText: ""
     property string fontFamily: "Noto Sans"
+
+    // SF Pro Display is an optical size drawn for 20px and up; below that it
+    // reads small and thin, so the sub-20px sizes get bumped whenever it is
+    // the selected family. Every other family (all monospace) is unchanged.
+    function fontPx(size) {
+        return root.fontFamily === "SF Pro Display" && size < 20 ? Math.round(size * 1.2) : size;
+    }
     property real morph: 0
     property int maxPanelHeight: 420
 
@@ -110,7 +117,7 @@ Item {
                     color: root.primaryText
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: 15
+                    font.pixelSize: root.fontPx(15)
                     font.weight: Font.Bold
                 }
 
@@ -120,7 +127,7 @@ Item {
                     color: root.connectedDeviceName !== "" ? "#c8c8c8" : "#555555"
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: root.fontPx(11)
                     font.weight: Font.DemiBold
                 }
             }
@@ -299,7 +306,7 @@ Item {
                                     color: root.primaryText
                                     elide: Text.ElideRight
                                     font.family: root.fontFamily
-                                    font.pixelSize: 12
+                                    font.pixelSize: root.fontPx(12)
                                     font.weight: Font.DemiBold
                                 }
 
@@ -309,7 +316,7 @@ Item {
                                     color: deviceRow.modelData.connected ? "#8eb7f2" : "#666666"
                                     elide: Text.ElideRight
                                     font.family: root.fontFamily
-                                    font.pixelSize: 10
+                                    font.pixelSize: root.fontPx(10)
                                     font.weight: Font.Medium
                                 }
                             }
@@ -356,7 +363,7 @@ Item {
                     text: !root.radioEnabled ? "Bluetooth is off" : (root.discovering ? "Looking for devices…" : "No devices found")
                     color: "#666666"
                     font.family: root.fontFamily
-                    font.pixelSize: 11
+                    font.pixelSize: root.fontPx(11)
                     font.weight: Font.DemiBold
                 }
             }
@@ -370,7 +377,7 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
             font.family: root.fontFamily
-            font.pixelSize: 10
+            font.pixelSize: root.fontPx(10)
             font.weight: Font.DemiBold
         }
     }

@@ -72,6 +72,13 @@ Item {
     property int workspaceIndicatorId: 0
     property int workspaceIndicatorCount: 4
     property string fontFamily: "Noto Sans"
+
+    // SF Pro Display is an optical size drawn for 20px and up; below that it
+    // reads small and thin, so the sub-20px sizes get bumped whenever it is
+    // the selected family. Every other family (all monospace) is unchanged.
+    function fontPx(size) {
+        return root.fontFamily === "SF Pro Display" && size < 20 ? Math.round(size * 1.2) : size;
+    }
     property var fontOptions: []
     readonly property color primaryText: "#f7f7f7"
     readonly property color secondaryText: "#7f7f7f"
@@ -463,7 +470,7 @@ Item {
                 color: root.primaryText
                 elide: Text.ElideNone
                 font.family: root.fontFamily
-                font.pixelSize: 14
+                font.pixelSize: root.fontPx(14)
                 font.weight: Font.Bold
                 opacity: root.workspaceIndicatorId === 0 ? 1 : 0
                 scale: root.workspaceIndicatorId === 0 ? 1 : 0.75
@@ -587,7 +594,7 @@ Item {
                             color: root.primaryText
                             elide: Text.ElideRight
                             font.family: root.fontFamily
-                            font.pixelSize: 28
+                            font.pixelSize: root.fontPx(28)
                             font.weight: Font.Bold
                         }
 
@@ -597,7 +604,7 @@ Item {
                             color: "#b8b8b8"
                             elide: Text.ElideRight
                             font.family: root.fontFamily
-                            font.pixelSize: 13
+                            font.pixelSize: root.fontPx(13)
                             font.weight: Font.DemiBold
                         }
                     }
@@ -649,7 +656,7 @@ Item {
                                 text: root.wifiConnected ? root.wifiSsid : "Off"
                                 color: root.wifiConnected ? "#c8c8c8" : "#555555"
                                 font.family: root.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: root.fontPx(11)
                                 font.weight: Font.DemiBold
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -686,7 +693,7 @@ Item {
                                 color: root.btConnected ? "#c8c8c8" : "#555555"
                                 font.family: root.fontFamily
                                 font.features: { "tnum": 1 }
-                                font.pixelSize: 11
+                                font.pixelSize: root.fontPx(11)
                                 font.weight: Font.DemiBold
                                 elide: Text.ElideRight
                                 anchors.verticalCenter: parent.verticalCenter
@@ -724,7 +731,7 @@ Item {
                                 text: root.favoriteAppCount > 0 ? root.favoriteAppCount + " pinned" : "Favorites"
                                 color: root.favoriteAppCount > 0 ? "#c8c8c8" : "#555555"
                                 font.family: root.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: root.fontPx(11)
                                 font.weight: Font.DemiBold
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -797,7 +804,7 @@ Item {
                         color: root.primaryText
                         elide: Text.ElideRight
                         font.family: root.fontFamily
-                        font.pixelSize: 15
+                        font.pixelSize: root.fontPx(15)
                         font.weight: Font.Bold
                     }
 
@@ -807,7 +814,7 @@ Item {
                         color: root.wifiConnected ? "#c8c8c8" : "#555555"
                         elide: Text.ElideRight
                         font.family: root.fontFamily
-                        font.pixelSize: 11
+                        font.pixelSize: root.fontPx(11)
                         font.weight: Font.DemiBold
                     }
                 }
@@ -976,7 +983,7 @@ Item {
                                         color: root.primaryText
                                         elide: Text.ElideRight
                                         font.family: root.fontFamily
-                                        font.pixelSize: 12
+                                        font.pixelSize: root.fontPx(12)
                                         font.weight: Font.DemiBold
                                     }
 
@@ -1023,7 +1030,7 @@ Item {
                                         color: root.secondaryText
                                         elide: Text.ElideRight
                                         font.family: root.fontFamily
-                                        font.pixelSize: 11
+                                        font.pixelSize: root.fontPx(11)
                                         font.weight: Font.DemiBold
                                     }
 
@@ -1046,7 +1053,7 @@ Item {
                                             echoMode: TextInput.Password
                                             color: root.primaryText
                                             font.family: root.fontFamily
-                                            font.pixelSize: 12
+                                            font.pixelSize: root.fontPx(12)
                                             clip: true
                                             text: root.wifiPasswordDraft
                                             onTextChanged: root.wifiPasswordChanged(text)
@@ -1058,7 +1065,7 @@ Item {
                                                 color: "#5f5f5f"
                                                 visible: wifiPasswordInput.text === ""
                                                 font.family: root.fontFamily
-                                                font.pixelSize: 12
+                                                font.pixelSize: root.fontPx(12)
                                             }
                                         }
                                     }
@@ -1070,7 +1077,7 @@ Item {
                                         color: "#f0736a"
                                         elide: Text.ElideRight
                                         font.family: root.fontFamily
-                                        font.pixelSize: 10
+                                        font.pixelSize: root.fontPx(10)
                                         font.weight: Font.DemiBold
                                     }
 
@@ -1091,7 +1098,7 @@ Item {
                                                 text: "Cancel"
                                                 color: "#e5e5e5"
                                                 font.family: root.fontFamily
-                                                font.pixelSize: 12
+                                                font.pixelSize: root.fontPx(12)
                                                 font.weight: Font.DemiBold
                                             }
 
@@ -1118,7 +1125,7 @@ Item {
                                                 text: root.wifiConnecting ? "..." : (wifiRowItem.modelData.active ? "Disconnect" : "Connect")
                                                 color: wifiRowItem.modelData.active ? "#f0736a" : "#000000"
                                                 font.family: root.fontFamily
-                                                font.pixelSize: 12
+                                                font.pixelSize: root.fontPx(12)
                                                 font.weight: Font.Bold
                                             }
 
@@ -1167,7 +1174,7 @@ Item {
                     text: root.wifiRadioEnabled ? "No networks found" : "Wi-Fi is off"
                     color: root.secondaryText
                     font.family: root.fontFamily
-                    font.pixelSize: 12
+                    font.pixelSize: root.fontPx(12)
                     font.weight: Font.DemiBold
                 }
             }
@@ -1450,7 +1457,7 @@ Item {
                             color: root.primaryText
                             elide: Text.ElideRight
                             font.family: root.fontFamily
-                            font.pixelSize: 15
+                            font.pixelSize: root.fontPx(15)
                             font.weight: Font.Bold
                         }
 
@@ -1460,7 +1467,7 @@ Item {
                             color: root.appsStatusText !== "" ? "#f0736a" : (root.favoriteAppCount > 0 ? "#c8c8c8" : "#555555")
                             elide: Text.ElideRight
                             font.family: root.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: root.fontPx(11)
                             font.weight: Font.DemiBold
                         }
                     }
@@ -1617,7 +1624,7 @@ Item {
                                 horizontalAlignment: Text.AlignHCenter
                                 elide: Text.ElideRight
                                 font.family: root.fontFamily
-                                font.pixelSize: 9
+                                font.pixelSize: root.fontPx(9)
                                 font.weight: Font.DemiBold
                             }
 
@@ -1702,7 +1709,7 @@ Item {
                             color: "#c8c8c8"
                             elide: Text.ElideRight
                             font.family: root.fontFamily
-                            font.pixelSize: 12
+                            font.pixelSize: root.fontPx(12)
                             font.weight: Font.DemiBold
                         }
 
@@ -1715,7 +1722,7 @@ Item {
                             verticalAlignment: Text.AlignVCenter
                             color: root.primaryText
                             font.family: root.fontFamily
-                            font.pixelSize: 12
+                            font.pixelSize: root.fontPx(12)
                             clip: true
                             // Deliberately not bound to appsSearchDraft. The first
                             // keystroke would break such a binding anyway, leaving the
@@ -1750,7 +1757,7 @@ Item {
                                 color: "#5f5f5f"
                                 visible: appsSearchInput.text === ""
                                 font.family: root.fontFamily
-                                font.pixelSize: 12
+                                font.pixelSize: root.fontPx(12)
                             }
                         }
 
@@ -1871,7 +1878,7 @@ Item {
                                         color: appsPickerRow.selected ? root.primaryText : "#c8c8c8"
                                         elide: Text.ElideRight
                                         font.family: root.fontFamily
-                                        font.pixelSize: 12
+                                        font.pixelSize: root.fontPx(12)
                                         font.weight: Font.DemiBold
                                     }
 
@@ -1918,7 +1925,7 @@ Item {
                         color: root.secondaryText
                         visible: root.appsPickerEntries.length === 0
                         font.family: root.fontFamily
-                        font.pixelSize: 12
+                        font.pixelSize: root.fontPx(12)
                         font.weight: Font.DemiBold
                     }
                 }
@@ -2022,7 +2029,7 @@ Item {
                 text: "!"
                 color: root.accent
                 font.family: root.fontFamily
-                font.pixelSize: 22
+                font.pixelSize: root.fontPx(22)
                 font.bold: true
             }
         }
@@ -2037,7 +2044,7 @@ Item {
                 color: root.secondaryText
                 elide: Text.ElideRight
                 font.family: root.fontFamily
-                font.pixelSize: 11
+                font.pixelSize: root.fontPx(11)
                 font.weight: Font.DemiBold
             }
 
@@ -2047,7 +2054,7 @@ Item {
                 color: root.primaryText
                 elide: Text.ElideRight
                 font.family: root.fontFamily
-                font.pixelSize: 15
+                font.pixelSize: root.fontPx(15)
                 font.weight: Font.DemiBold
             }
 
@@ -2057,7 +2064,7 @@ Item {
                 color: root.secondaryText
                 elide: Text.ElideRight
                 font.family: root.fontFamily
-                font.pixelSize: 12
+                font.pixelSize: root.fontPx(12)
             }
         }
 
@@ -2237,7 +2244,7 @@ Item {
                     color: root.primaryText
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: 16
+                    font.pixelSize: root.fontPx(16)
                     font.weight: Font.DemiBold
                 }
 
@@ -2246,7 +2253,7 @@ Item {
                     color: "#f0f0f0"
                     visible: root.timeText !== ""
                     font.family: root.fontFamily
-                    font.pixelSize: 15
+                    font.pixelSize: root.fontPx(15)
                     font.weight: Font.Bold
                 }
 
@@ -2282,7 +2289,7 @@ Item {
                 color: root.secondaryText
                 elide: Text.ElideRight
                 font.family: root.fontFamily
-                font.pixelSize: 13
+                font.pixelSize: root.fontPx(13)
             }
 
             RowLayout {
@@ -2294,7 +2301,7 @@ Item {
                     text: root.formatTime(root.mediaPosition)
                     color: "#6d6d6d"
                     font.family: root.fontFamily
-                    font.pixelSize: 10
+                    font.pixelSize: root.fontPx(10)
                     font.weight: Font.DemiBold
                 }
 
@@ -2344,7 +2351,7 @@ Item {
                     text: root.formatTime(root.mediaLength)
                     color: "#6d6d6d"
                     font.family: root.fontFamily
-                    font.pixelSize: 10
+                    font.pixelSize: root.fontPx(10)
                     font.weight: Font.DemiBold
                 }
             }

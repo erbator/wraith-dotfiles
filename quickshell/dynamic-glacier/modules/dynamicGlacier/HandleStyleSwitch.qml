@@ -10,6 +10,13 @@ RowLayout {
     property int batteryLevel: 0
     property string statusText: ""
     property string fontFamily: "Noto Sans"
+
+    // SF Pro Display is an optical size drawn for 20px and up; below that it
+    // reads small and thin, so the sub-20px sizes get bumped whenever it is
+    // the selected family. Every other family (all monospace) is unchanged.
+    function fontPx(size) {
+        return root.fontFamily === "SF Pro Display" && size < 20 ? Math.round(size * 1.2) : size;
+    }
     property bool showBattery: false
     property bool showSettings: true
     property bool compact: false
@@ -74,7 +81,7 @@ RowLayout {
             horizontalAlignment: Text.AlignRight
             elide: Text.ElideRight
             font.family: root.fontFamily
-            font.pixelSize: root.compact ? 10 : 11
+            font.pixelSize: root.fontPx(root.compact ? 10 : 11)
             font.weight: Font.DemiBold
         }
     }
@@ -100,7 +107,7 @@ RowLayout {
                 text: root.batteryLevel + "%"
                 color: batteryMouse.containsMouse ? "#ffffff" : "#ececec"
                 font.family: root.fontFamily
-                font.pixelSize: root.compact ? 10 : 11
+                font.pixelSize: root.fontPx(root.compact ? 10 : 11)
                 font.weight: Font.Bold
                 anchors.verticalCenter: parent.verticalCenter
             }

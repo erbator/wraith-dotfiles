@@ -5,6 +5,16 @@ Item {
     id: root
 
     property string fontFamily: "Noto Sans"
+
+    // SF Pro Display is an optical size drawn for 20px and up; below that it
+    // reads small and thin, so the sub-20px sizes get bumped whenever it is
+    // the selected family. Every other family (all monospace) is unchanged.
+    function fontPx(size) {
+        return root.fontFamily === "SF Pro Display" && size < 20 ? Math.round(size * 1.2) : size;
+    }
+    // Matching factor for the few fixed-width text columns that were sized
+    // for the old font's glyph widths.
+    readonly property real fontScale: root.fontFamily === "SF Pro Display" ? 1.2 : 1
     property real morph: 0
 
     readonly property color primaryText: "#f7f7f7"
@@ -245,7 +255,7 @@ Item {
                     color: root.primaryText
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: 15
+                    font.pixelSize: root.fontPx(15)
                     font.weight: Font.Bold
                 }
 
@@ -339,7 +349,7 @@ Item {
                             text: dayTab.modelData
                             color: dayTab.selected ? root.accentColor : root.secondaryText
                             font.family: root.fontFamily
-                            font.pixelSize: 11
+                            font.pixelSize: root.fontPx(11)
                             font.weight: Font.DemiBold
                         }
 
@@ -407,7 +417,7 @@ Item {
                             spacing: 10
 
                             ColumnLayout {
-                                Layout.preferredWidth: 58
+                                Layout.preferredWidth: Math.round(58 * root.fontScale)
                                 spacing: 0
 
                                 Text {
@@ -415,7 +425,7 @@ Item {
                                     color: blockRow.isNow ? root.accentColor : root.primaryText
                                     font.family: root.fontFamily
                                     font.features: { "tnum": 1 }
-                                    font.pixelSize: 12
+                                    font.pixelSize: root.fontPx(12)
                                     font.weight: Font.Bold
                                 }
 
@@ -424,7 +434,7 @@ Item {
                                     color: root.secondaryText
                                     font.family: root.fontFamily
                                     font.features: { "tnum": 1 }
-                                    font.pixelSize: 9
+                                    font.pixelSize: root.fontPx(9)
                                 }
                             }
 
@@ -442,7 +452,7 @@ Item {
                                         color: root.primaryText
                                         elide: Text.ElideRight
                                         font.family: root.fontFamily
-                                        font.pixelSize: 12
+                                        font.pixelSize: root.fontPx(12)
                                         font.weight: Font.DemiBold
                                     }
 
@@ -451,7 +461,7 @@ Item {
                                         text: blockRow.modelData.note ?? ""
                                         color: root.noteColor
                                         font.family: root.fontFamily
-                                        font.pixelSize: 10
+                                        font.pixelSize: root.fontPx(10)
                                         font.weight: Font.Bold
                                     }
                                 }
@@ -463,7 +473,7 @@ Item {
                                     color: root.secondaryText
                                     elide: Text.ElideRight
                                     font.family: root.fontFamily
-                                    font.pixelSize: 10
+                                    font.pixelSize: root.fontPx(10)
                                 }
                             }
                         }
@@ -504,7 +514,7 @@ Item {
                             color: root.accentColor
                             font.family: root.fontFamily
                             font.features: { "tnum": 1 }
-                            font.pixelSize: 9
+                            font.pixelSize: root.fontPx(9)
                             font.weight: Font.DemiBold
                         }
                     }

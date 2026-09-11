@@ -5,6 +5,13 @@ Item {
     id: root
 
     property string fontFamily: "Noto Sans"
+
+    // SF Pro Display is an optical size drawn for 20px and up; below that it
+    // reads small and thin, so the sub-20px sizes get bumped whenever it is
+    // the selected family. Every other family (all monospace) is unchanged.
+    function fontPx(size) {
+        return root.fontFamily === "SF Pro Display" && size < 20 ? Math.round(size * 1.2) : size;
+    }
     property real morph: 0
 
     readonly property color primaryText: "#f7f7f7"
@@ -226,7 +233,7 @@ Item {
                     color: root.primaryText
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: 15
+                    font.pixelSize: root.fontPx(15)
                     font.weight: Font.Bold
                 }
 
@@ -322,7 +329,7 @@ Item {
                                 text: timerTab.modelData
                                 color: timerTab.selected ? root.accentColor : root.secondaryText
                                 font.family: root.fontFamily
-                                font.pixelSize: 11
+                                font.pixelSize: root.fontPx(11)
                                 font.weight: Font.DemiBold
                             }
                         }
@@ -349,7 +356,7 @@ Item {
                     text: root.activeTab === "pomodoro" ? root.pomodoroPhaseLabel(root.pomodoroPhase) : "ELAPSED"
                     color: root.secondaryText
                     font.family: root.fontFamily
-                    font.pixelSize: 10
+                    font.pixelSize: root.fontPx(10)
                     font.weight: Font.Bold
                 }
 
@@ -382,7 +389,7 @@ Item {
                     color: root.activeTimerRunning ? root.accentColor : root.primaryText
                     font.family: root.fontFamily
                     font.features: { "tnum": 1 }
-                    font.pixelSize: 40
+                    font.pixelSize: root.fontPx(40)
                     font.weight: Font.Bold
                 }
             }
@@ -439,7 +446,7 @@ Item {
                             text: root.activeTimerRunning ? "Pause" : "Start"
                             color: root.activeTimerRunning ? root.accentColor : root.primaryText
                             font.family: root.fontFamily
-                            font.pixelSize: 12
+                            font.pixelSize: root.fontPx(12)
                             font.weight: Font.DemiBold
                         }
                     }
