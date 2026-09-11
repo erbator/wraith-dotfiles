@@ -14,10 +14,17 @@ Item {
     readonly property int panelPadding: 16
     readonly property int headerHeight: 32
     readonly property int tabsHeight: 28
-    readonly property int rowHeight: 36
+    readonly property int tabSpacing: 6
+    readonly property int rowHeight: 44
     readonly property int rowSpacing: 6
     readonly property int sectionSpacing: 10
     readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
+
+    // Explicit pixel width per day tab, computed once from the panel's own
+    // (fixed, per-mode) width instead of Layout.fillWidth — a plain Row with
+    // hard-coded sizes can never renegotiate/jiggle when anything around it
+    // changes, unlike a RowLayout.
+    readonly property real dayTabWidth: (root.width - root.panelPadding * 2 - (root.dayLabels.length - 1) * root.tabSpacing) / root.dayLabels.length
 
     // Sized to the busiest day (not the currently selected one) so the panel
     // never resizes when switching tabs — only the row list's own content
@@ -50,6 +57,7 @@ Item {
     // (e.g. a double lab period), matching how the printed timetable groups them.
     readonly property var schedule: [
         [
+            { p: [0, 0], subject: "Fejlesztés", meta: "G", note: "szopás az egész" },
             { p: [2, 2], subject: "Történelem", meta: "KA" },
             { p: [3, 3], subject: "Hálózatok I. 11.t", meta: "K.O · 2. terem" },
             { p: [4, 4], subject: "Matematika", meta: "" },
@@ -126,6 +134,23 @@ Item {
         }
 
         return -1;
+    }
+
+    // 0..1 fraction of the way through the currently-in-progress block, or 0
+    // when nothing is active. Ticks along with liveClock (every 30s), plenty
+    // fine-grained for a 40-45 minute period.
+    function activeBlockProgress(dayIndex) {
+        const index = root.activeBlockIndex(dayIndex);
+
+        if (index === -1)
+            return 0;
+
+        const block = root.schedule[dayIndex][index];
+        const nowMinutes = liveClock.now.getHours() * 60 + liveClock.now.getMinutes();
+        const start = root.timeToMinutes(root.bellTimes[block.p[0]][0]);
+        const end = root.timeToMinutes(root.bellTimes[block.p[1]][1]);
+
+        return Math.max(0, Math.min(1, (nowMinutes - start) / (end - start)));
     }
 
     function periodLabel(block) {
@@ -280,10 +305,10 @@ Item {
                 }
             }
 
-            RowLayout {
-                Layout.fillWidth: true
+            Row {
+                Layout.preferredWidth: root.width - root.panelPadding * 2
                 Layout.preferredHeight: root.tabsHeight
-                spacing: 6
+                spacing: root.tabSpacing
 
                 Repeater {
                     model: root.dayLabels
@@ -297,8 +322,8 @@ Item {
                         readonly property bool selected: index === root.selectedDayIndex
                         readonly property bool isToday: index === root.todayIndex
 
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        width: root.dayTabWidth
+                        height: root.tabsHeight
                         radius: 8
                         color: dayTab.selected ? "#1c2f22" : (dayMouse.containsMouse ? "#161616" : "#0a0a0a")
                         border.width: 1
@@ -336,7 +361,16 @@ Item {
                 }
             }
 
-            ColumnLayout {
+            Column {
+                id: blockList
+
+                // A plain Column with explicit per-row width/height (below)
+                // instead of a ColumnLayout: switching days changes the
+                // Repeater's item COUNT, and Qt Quick Layouts renegotiate
+                // every sibling's implicit size whenever that happens — a
+                // Column just stacks children at their own fixed size and
+                // never renegotiates anything, so there is nothing left to
+                // visibly jiggle.
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 spacing: root.rowSpacing
@@ -351,13 +385,15 @@ Item {
                         required property int index
 
                         readonly property bool isNow: index === root.activeBlockIndex(root.selectedDayIndex)
+                        readonly property real progress: blockRow.isNow ? root.activeBlockProgress(root.selectedDayIndex) : 0
 
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: root.rowHeight
+                        width: blockList.width
+                        height: root.rowHeight
                         radius: 9
                         color: blockRow.isNow ? "#12271a" : "#0a0a0a"
                         border.width: 1
                         border.color: blockRow.isNow ? root.accentColor : "#1c1c1c"
+                        clip: true
 
                         RowLayout {
                             anchors.fill: parent
@@ -423,6 +459,45 @@ Item {
                                     font.pixelSize: 10
                                 }
                             }
+                        }
+
+                        // Progress bar for the class currently in session —
+                        // track + fill, clipped to the row's rounded corners
+                        // by blockRow's own clip: true above.
+                        Rectangle {
+                            id: progressTrack
+
+                            visible: blockRow.isNow
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            anchors.leftMargin: 10
+                            anchors.rightMargin: 10
+                            anchors.bottomMargin: 6
+                            radius: 1.5
+                            height: 3
+                            color: "#1f3327"
+
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: parent.width * blockRow.progress
+                                radius: 1.5
+                                color: root.accentColor
+                            }
+                        }
+
+                        Text {
+                            visible: blockRow.isNow
+                            anchors.right: progressTrack.right
+                            anchors.bottom: progressTrack.top
+                            anchors.bottomMargin: 2
+                            text: Math.round(blockRow.progress * 100) + "%"
+                            color: root.accentColor
+                            font.family: root.fontFamily
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
                         }
                     }
                 }

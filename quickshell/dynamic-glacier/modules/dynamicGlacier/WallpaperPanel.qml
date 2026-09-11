@@ -5,6 +5,9 @@ Item {
     id: root
 
     property var entries: []
+    // "" means entries holds folder tiles (+ any loose root images);
+    // otherwise it holds the image tiles inside that folder.
+    property string currentFolder: ""
     property string currentPath: ""
     property string statusText: ""
     property bool applying: false
@@ -33,7 +36,10 @@ Item {
     signal closeRequested
     signal settingsRequested
     signal refreshRequested
-    signal applyRequested(string path)
+    // Reports the tile's own index, not whatever happens to be
+    // keyboard-highlighted — a click acts on the tile clicked.
+    signal entryActivated(int index)
+    signal backRequested
     signal highlightNavRequested(int dx, int dy)
     signal activateRequested
 
@@ -66,7 +72,12 @@ Item {
         Keys.onRightPressed: root.highlightNavRequested(1, 0)
         Keys.onReturnPressed: root.activateRequested()
         Keys.onEnterPressed: root.activateRequested()
-        Keys.onEscapePressed: root.closeRequested()
+        Keys.onEscapePressed: {
+            if (root.currentFolder !== "")
+                root.backRequested();
+            else
+                root.closeRequested();
+        }
 
         ColumnLayout {
             anchors.fill: parent
@@ -82,15 +93,25 @@ Item {
                     Layout.preferredWidth: root.headerHeight
                     Layout.preferredHeight: root.headerHeight
                     radius: 11
-                    color: "#090909"
+                    color: backMouse.containsMouse && root.currentFolder !== "" ? "#1a1a1a" : "#090909"
                     border.width: 1
                     border.color: "#232323"
 
                     MIcon {
                         anchors.centerIn: parent
-                        name: "wallpaper"
+                        name: root.currentFolder !== "" ? "arrow_back" : "wallpaper"
                         size: 15
                         color: root.primaryText
+                    }
+
+                    MouseArea {
+                        id: backMouse
+
+                        anchors.fill: parent
+                        enabled: root.currentFolder !== ""
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.backRequested()
                     }
                 }
 
@@ -100,7 +121,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Wallpaper"
+                        text: root.currentFolder !== "" ? root.currentFolder : "Wallpaper"
                         color: root.primaryText
                         elide: Text.ElideRight
                         font.family: root.fontFamily
@@ -110,7 +131,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: root.statusText !== "" ? root.statusText : (root.entries.length + (root.entries.length === 1 ? " image" : " images"))
+                        text: root.statusText !== "" ? root.statusText : (root.entries.length + (root.entries.length === 1 ? " item" : " items"))
                         color: root.statusText !== "" ? "#f0736a" : root.secondaryText
                         elide: Text.ElideRight
                         font.family: root.fontFamily
@@ -203,7 +224,7 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "No images in ~/Pictures/Wallpapers"
+                    text: root.currentFolder !== "" ? "No images in this folder" : "No images in ~/Pictures/Wallpapers"
                     color: root.secondaryText
                     visible: root.entries.length === 0
                     font.family: root.fontFamily
@@ -230,7 +251,8 @@ Item {
                         required property var modelData
                         required property int index
 
-                        readonly property bool isCurrent: wallpaperTile.modelData.path === root.currentPath
+                        readonly property bool isFolder: wallpaperTile.modelData.kind === "folder"
+                        readonly property bool isCurrent: !wallpaperTile.isFolder && wallpaperTile.modelData.path === root.currentPath
                         readonly property bool keyHighlighted: wallpaperTile.GridView.isCurrentItem
 
                         width: wallpaperGrid.cellWidth
@@ -261,12 +283,22 @@ Item {
                                     // Plain absolute paths coerce to file:// URLs correctly
                                     // (including spaces) via QML's url-property handling —
                                     // manual "file://" + path concatenation mangles spaces.
-                                    source: wallpaperTile.modelData.path
+                                    source: wallpaperTile.modelData.thumbnailPath
                                     fillMode: Image.PreserveAspectCrop
                                     asynchronous: true
                                     smooth: true
                                     sourceSize.width: 240
                                     sourceSize.height: 180
+                                }
+
+                                // Folders get a dimming wash so the label reads clearly
+                                // over an arbitrary thumbnail, and so a folder tile never
+                                // gets mistaken for "this is what my desktop looks like
+                                // right now" the way an image tile's own preview is.
+                                Rectangle {
+                                    anchors.fill: parent
+                                    color: "#000000"
+                                    opacity: wallpaperTile.isFolder ? 0.35 : 0
                                 }
 
                                 Rectangle {
@@ -284,13 +316,21 @@ Item {
                                         anchors.right: parent.right
                                         anchors.bottom: parent.bottom
                                         anchors.margins: 5
-                                        text: wallpaperTile.modelData.name
+                                        text: wallpaperTile.isFolder ? wallpaperTile.modelData.name + " (" + wallpaperTile.modelData.count + ")" : wallpaperTile.modelData.name
                                         color: "#f0f0f0"
                                         elide: Text.ElideRight
                                         font.family: root.fontFamily
                                         font.pixelSize: 9
                                         font.weight: Font.DemiBold
                                     }
+                                }
+
+                                MIcon {
+                                    anchors.centerIn: parent
+                                    visible: wallpaperTile.isFolder
+                                    name: "folder"
+                                    size: 22
+                                    color: "#f0f0f0"
                                 }
                             }
 
@@ -316,7 +356,7 @@ Item {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.applyRequested(wallpaperTile.modelData.path)
+                                onClicked: root.entryActivated(wallpaperTile.index)
                             }
                         }
                     }
@@ -329,7 +369,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Drop images into ~/Pictures/Wallpapers"
+                    text: root.currentFolder !== "" ? "Enter to apply" : "Click a folder to browse"
                     color: "#606060"
                     elide: Text.ElideRight
                     font.family: root.fontFamily

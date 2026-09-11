@@ -11,21 +11,38 @@ Item {
 
     readonly property color primaryText: "#f7f7f7"
     readonly property color secondaryText: "#777777"
-    readonly property color accentColor: "#f0a860"
+    readonly property color mutedText: "#444444"
+    readonly property color accentColor: "#4ade80"
     readonly property int panelPadding: 16
     readonly property int headerHeight: 32
-    readonly property int bodyHeight: 310
-    readonly property int footerHeight: 16
-    readonly property int sectionSpacing: 8
+    readonly property int sectionSpacing: 6
     readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
 
-    readonly property real contentHeight: root.panelPadding * 2 + root.headerHeight + root.sectionSpacing + root.bodyHeight + root.sectionSpacing + root.footerHeight
+    // --- Calendar geometry ------------------------------------------------
+    readonly property int monthHeaderHeight: 22
+    readonly property int weekdayHeaderHeight: 16
+    readonly property int calendarRowGap: 2
+    readonly property int dayCellHeight: 27
+    readonly property int calendarRows: 6
+    readonly property real contentWidth: root.width - root.panelPadding * 2
+    readonly property real dayCellWidth: root.contentWidth / 7
+    readonly property real calendarHeight: root.monthHeaderHeight + root.calendarRowGap + root.weekdayHeaderHeight + root.calendarRowGap + root.calendarRows * root.dayCellHeight
+
+    // --- Agenda (selected day's reminders) --------------------------------
+    readonly property int agendaLabelHeight: 16
+    readonly property int agendaRowHeight: 25
+    readonly property int agendaMaxVisible: 2
+    readonly property real agendaHeight: root.agendaLabelHeight + 4 + root.agendaRowHeight * root.agendaMaxVisible
+
+    readonly property int addRowHeight: 30
+
+    readonly property real contentHeight: root.panelPadding * 2 + root.headerHeight + root.sectionSpacing + root.calendarHeight + root.sectionSpacing + root.agendaHeight + root.sectionSpacing + root.addRowHeight
 
     signal closeRequested
     signal settingsRequested
     // Emitted the instant a reminder's time is up. The shell (DynamicGlacier)
     // turns this into a notification banner + alert sound — this panel only
-    // owns the list and the calendar, not how the alert is presented.
+    // owns the calendar and the list.
     signal reminderFired(string text)
 
     // Reminders keep ticking via the Timer below even while this panel isn't
@@ -37,21 +54,15 @@ Item {
     property int idCounter: 0
     property real now: Date.now()
 
-    // "list" shows pending reminders; "add" shows the composer (text +
-    // calendar + time). Kept as one fixed-height panel (bodyHeight) so
-    // switching views never resizes the island — same fix that solved the
-    // Timetable panel's day-switch stretching bug.
-    property string viewMode: "list"
+    readonly property var monthNames: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    readonly property var weekdayLabels: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 
-    readonly property var weekdayLabels: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
-    readonly property int calendarRows: 6
+    property int viewYear: new Date().getFullYear()
+    property int viewMonth: new Date().getMonth()
+    property var selectedDate: root.startOfDay(new Date())
 
-    property date draftBase: new Date()
-    property int viewYear: root.draftBase.getFullYear()
-    property int viewMonth: root.draftBase.getMonth()
-    property var selectedDate: null // Date at local midnight, or null
-    property string draftHours: "00"
-    property string draftMinutes: "00"
+    property string draftText: ""
+    property string draftTime: "09:00"
 
     function nextId() {
         root.idCounter += 1;
@@ -62,51 +73,33 @@ Item {
         return new Date(date.getFullYear(), date.getMonth(), date.getDate());
     }
 
-    // Resets the composer to "30 minutes from now" — a sensible default that
-    // is itself already a valid, future reminder, so hitting Confirm with no
-    // further input just works.
-    function openComposer() {
-        const base = new Date(Date.now() + 30 * 60000);
-
-        root.draftBase = base;
-        root.viewYear = base.getFullYear();
-        root.viewMonth = base.getMonth();
-        root.selectedDate = root.startOfDay(base);
-        root.draftHours = String(base.getHours()).padStart(2, "0");
-        root.draftMinutes = String(base.getMinutes()).padStart(2, "0");
-        root.viewMode = "add";
-        reminderTextInput.text = "";
-        reminderTextInput.forceActiveFocus();
-    }
-
-    function closeComposer() {
-        root.viewMode = "list";
-    }
-
     function goToMonth(delta) {
         const next = new Date(root.viewYear, root.viewMonth + delta, 1);
-        const earliest = root.startOfDay(new Date());
-
-        if (next.getFullYear() < earliest.getFullYear() || (next.getFullYear() === earliest.getFullYear() && next.getMonth() < earliest.getMonth()))
-            return;
 
         root.viewYear = next.getFullYear();
         root.viewMonth = next.getMonth();
     }
 
-    readonly property bool canGoToPreviousMonth: {
+    function goToToday() {
         const today = new Date();
 
-        return root.viewYear > today.getFullYear() || (root.viewYear === today.getFullYear() && root.viewMonth > today.getMonth());
+        root.viewYear = today.getFullYear();
+        root.viewMonth = today.getMonth();
+        root.selectedDate = root.startOfDay(today);
+    }
+
+    function selectDay(day) {
+        root.selectedDate = new Date(root.viewYear, root.viewMonth, day);
     }
 
     // 42 cells (6x7): null for the leading/trailing blanks outside this
-    // month, otherwise a fixed-shape record the day-cell delegate can bind
-    // to without ever needing to reach back into root.
+    // month, otherwise a fixed-shape record the day-cell delegate binds to.
     readonly property var calendarCells: {
         const firstOfMonth = new Date(root.viewYear, root.viewMonth, 1);
         const daysInMonth = new Date(root.viewYear, root.viewMonth + 1, 0).getDate();
-        const leadingBlanks = firstOfMonth.getDay();
+        // getDay() is 0=Sunday..6=Saturday; shift so the grid's first column
+        // is Monday (0) and Sunday becomes the last column (6).
+        const leadingBlanks = (firstOfMonth.getDay() + 6) % 7;
         const today = root.startOfDay(new Date());
         const cells = [];
 
@@ -115,13 +108,13 @@ Item {
 
         for (let day = 1; day <= daysInMonth; day++) {
             const date = new Date(root.viewYear, root.viewMonth, day);
+            const timestamp = date.getTime();
 
             cells.push({
                 day: day,
-                timestamp: date.getTime(),
-                isToday: date.getTime() === today.getTime(),
-                isPast: date.getTime() < today.getTime(),
-                isSelected: root.selectedDate !== null && date.getTime() === root.selectedDate.getTime()
+                isToday: timestamp === today.getTime(),
+                isSelected: root.selectedDate !== null && timestamp === root.selectedDate.getTime(),
+                hasReminder: root.reminders.some(reminder => root.startOfDay(new Date(reminder.fireAt)).getTime() === timestamp)
             });
         }
 
@@ -131,26 +124,50 @@ Item {
         return cells;
     }
 
-    readonly property string monthLabel: {
-        const names = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    readonly property string monthLabel: root.monthNames[root.viewMonth] + " " + root.viewYear
 
-        return names[root.viewMonth] + " " + root.viewYear;
+    readonly property var selectedDayReminders: root.reminders.filter(reminder => root.startOfDay(new Date(reminder.fireAt)).getTime() === root.selectedDate.getTime()).sort((a, b) => a.fireAt - b.fireAt)
+
+    readonly property string selectedDateLabel: {
+        const today = root.startOfDay(new Date());
+
+        if (root.selectedDate.getTime() === today.getTime())
+            return "Today";
+
+        const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+        return names[root.selectedDate.getDay()] + ", " + root.monthNames[root.selectedDate.getMonth()] + " " + root.selectedDate.getDate();
     }
+
+    // Accepts "H:MM" or "HH:MM"; returns {hours, minutes} or null.
+    function parseTime(text) {
+        const match = /^([0-9]{1,2}):([0-9]{2})$/.exec((text || "").trim());
+
+        if (!match)
+            return null;
+
+        const hours = parseInt(match[1], 10);
+        const minutes = parseInt(match[2], 10);
+
+        if (hours > 23 || minutes > 59)
+            return null;
+
+        return {
+            hours: hours,
+            minutes: minutes
+        };
+    }
+
+    readonly property var parsedDraftTime: root.parseTime(root.draftTime)
 
     readonly property var pendingFireAt: {
-        if (!root.selectedDate)
+        if (!root.parsedDraftTime)
             return null;
 
-        const hours = parseInt(root.draftHours, 10);
-        const minutes = parseInt(root.draftMinutes, 10);
-
-        if (!Number.isFinite(hours) || !Number.isFinite(minutes))
-            return null;
-
-        return new Date(root.selectedDate.getFullYear(), root.selectedDate.getMonth(), root.selectedDate.getDate(), hours, minutes).getTime();
+        return new Date(root.selectedDate.getFullYear(), root.selectedDate.getMonth(), root.selectedDate.getDate(), root.parsedDraftTime.hours, root.parsedDraftTime.minutes).getTime();
     }
 
-    readonly property bool canConfirm: reminderTextInput.text.trim() !== "" && root.pendingFireAt !== null && root.pendingFireAt > Date.now()
+    readonly property bool canConfirm: root.draftText.trim() !== "" && root.pendingFireAt !== null && root.pendingFireAt > Date.now()
 
     function confirmReminder() {
         if (!root.canConfirm)
@@ -158,11 +175,13 @@ Item {
 
         root.reminders = root.reminders.concat([{
             id: root.nextId(),
-            text: reminderTextInput.text.trim(),
+            text: root.draftText.trim(),
             fireAt: root.pendingFireAt
         }]).sort((a, b) => a.fireAt - b.fireAt);
         root.saveReminders();
-        root.closeComposer();
+        root.draftText = "";
+        reminderTextInput.text = "";
+        reminderTextInput.forceActiveFocus();
     }
 
     function removeReminder(id) {
@@ -181,19 +200,6 @@ Item {
 
         for (const reminder of due)
             root.reminderFired(reminder.text);
-    }
-
-    function formatFireAt(fireAt) {
-        const date = new Date(fireAt);
-        const hh = String(date.getHours()).padStart(2, "0");
-        const mm = String(date.getMinutes()).padStart(2, "0");
-
-        if (root.startOfDay(date).getTime() === root.startOfDay(new Date()).getTime())
-            return "Today " + hh + ":" + mm;
-
-        const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-        return names[date.getMonth()] + " " + date.getDate() + " " + hh + ":" + mm;
     }
 
     function applyRemindersJson(text) {
@@ -257,7 +263,7 @@ Item {
 
     onVisibleChanged: {
         if (root.visible) {
-            root.viewMode = "list";
+            root.goToToday();
             reminderFocusScope.forceActiveFocus();
         }
     }
@@ -268,12 +274,7 @@ Item {
         anchors.fill: parent
         focus: true
 
-        Keys.onEscapePressed: {
-            if (root.viewMode === "add")
-                root.closeComposer();
-            else
-                root.closeRequested();
-        }
+        Keys.onEscapePressed: root.closeRequested()
 
         ColumnLayout {
             anchors.fill: parent
@@ -303,37 +304,12 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.viewMode === "add" ? "New Reminder" : "Reminders"
+                    text: "Reminders"
                     color: root.primaryText
                     elide: Text.ElideRight
                     font.family: root.fontFamily
                     font.pixelSize: 15
                     font.weight: Font.Bold
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 20
-                    Layout.preferredHeight: 20
-                    radius: 10
-                    color: modeToggleMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
-                    border.width: 1
-                    border.color: "#232323"
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: root.viewMode === "add" ? "arrow_back" : "add"
-                        size: 13
-                        color: "#999999"
-                    }
-
-                    MouseArea {
-                        id: modeToggleMouse
-
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.viewMode === "add" ? root.closeComposer() : root.openComposer()
-                    }
                 }
 
                 Rectangle {
@@ -387,28 +363,202 @@ Item {
                 }
             }
 
-            Item {
+            // --- Calendar --------------------------------------------------
+            ColumnLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: root.bodyHeight
+                Layout.preferredHeight: root.calendarHeight
+                spacing: root.calendarRowGap
 
-                // --- List view -------------------------------------------------
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: root.monthHeaderHeight
+
+                    Rectangle {
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 7
+                        color: prevMonthMouse.containsMouse ? "#1a1a1a" : "transparent"
+
+                        MIcon {
+                            anchors.centerIn: parent
+                            name: "chevron_left"
+                            size: 15
+                            color: root.secondaryText
+                        }
+
+                        MouseArea {
+                            id: prevMonthMouse
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.goToMonth(-1)
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        text: root.monthLabel
+                        color: root.primaryText
+                        font.family: root.fontFamily
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.goToToday()
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 7
+                        color: nextMonthMouse.containsMouse ? "#1a1a1a" : "transparent"
+
+                        MIcon {
+                            anchors.centerIn: parent
+                            name: "chevron_right"
+                            size: 15
+                            color: root.secondaryText
+                        }
+
+                        MouseArea {
+                            id: nextMonthMouse
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.goToMonth(1)
+                        }
+                    }
+                }
+
+                Row {
+                    Layout.preferredWidth: root.contentWidth
+                    Layout.preferredHeight: root.weekdayHeaderHeight
+
+                    Repeater {
+                        model: root.weekdayLabels
+
+                        Text {
+                            required property string modelData
+
+                            width: root.dayCellWidth
+                            horizontalAlignment: Text.AlignHCenter
+                            text: modelData
+                            color: root.secondaryText
+                            font.family: root.fontFamily
+                            font.pixelSize: 9
+                            font.weight: Font.DemiBold
+                        }
+                    }
+                }
+
+                Grid {
+                    Layout.preferredWidth: root.contentWidth
+                    Layout.preferredHeight: root.calendarRows * root.dayCellHeight
+                    columns: 7
+
+                    Repeater {
+                        model: root.calendarCells
+
+                        Item {
+                            id: dayCell
+
+                            required property var modelData
+
+                            width: root.dayCellWidth
+                            height: root.dayCellHeight
+
+                            Rectangle {
+                                id: selectionRing
+
+                                anchors.centerIn: parent
+                                width: Math.min(parent.width, parent.height) - 6
+                                height: width
+                                radius: width / 2
+                                color: dayCell.modelData && dayCell.modelData.isSelected ? root.accentColor : "transparent"
+                                border.width: dayCell.modelData && dayCell.modelData.isToday && !dayCell.modelData.isSelected ? 1 : 0
+                                border.color: root.accentColor
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: dayCell.modelData !== null
+                                    text: dayCell.modelData ? dayCell.modelData.day : ""
+                                    color: {
+                                        if (!dayCell.modelData)
+                                            return root.secondaryText;
+                                        if (dayCell.modelData.isSelected)
+                                            return "#0b0b0b";
+                                        if (dayCell.modelData.isToday)
+                                            return root.accentColor;
+
+                                        return root.primaryText;
+                                    }
+                                    font.family: root.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: dayCell.modelData && (dayCell.modelData.isSelected || dayCell.modelData.isToday) ? Font.Bold : Font.Normal
+                                }
+                            }
+
+                            Rectangle {
+                                visible: dayCell.modelData !== null && dayCell.modelData.hasReminder && !dayCell.modelData.isSelected
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.top: selectionRing.bottom
+                                anchors.topMargin: 1
+                                width: 3
+                                height: 3
+                                radius: 1.5
+                                color: root.accentColor
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: dayCell.modelData !== null
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.selectDay(dayCell.modelData.day)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- Agenda for the selected day --------------------------------
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.agendaHeight
+                spacing: 4
+
+                Text {
+                    Layout.fillWidth: true
+                    text: root.selectedDateLabel
+                    color: root.secondaryText
+                    font.family: root.fontFamily
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                }
+
                 Item {
-                    anchors.fill: parent
-                    visible: root.viewMode === "list"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
 
                     Text {
                         anchors.centerIn: parent
-                        visible: root.reminders.length === 0
-                        text: "No reminders set"
-                        color: root.secondaryText
+                        visible: root.selectedDayReminders.length === 0
+                        text: "No reminders"
+                        color: root.mutedText
                         font.family: root.fontFamily
-                        font.pixelSize: 12
+                        font.pixelSize: 11
                     }
 
                     ListView {
                         anchors.fill: parent
-                        visible: root.reminders.length > 0
-                        model: root.reminders
+                        visible: root.selectedDayReminders.length > 0
+                        model: root.selectedDayReminders
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
 
@@ -419,11 +569,23 @@ Item {
                             required property int index
 
                             width: ListView.view ? ListView.view.width : 0
-                            height: 32
+                            height: root.agendaRowHeight
 
                             RowLayout {
                                 anchors.fill: parent
                                 spacing: 8
+
+                                Text {
+                                    text: {
+                                        const date = new Date(reminderRow.modelData.fireAt);
+
+                                        return String(date.getHours()).padStart(2, "0") + ":" + String(date.getMinutes()).padStart(2, "0");
+                                    }
+                                    color: root.accentColor
+                                    font.family: root.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: Font.DemiBold
+                                }
 
                                 Text {
                                     Layout.fillWidth: true
@@ -432,14 +594,6 @@ Item {
                                     color: root.primaryText
                                     font.family: root.fontFamily
                                     font.pixelSize: 12
-                                }
-
-                                Text {
-                                    text: root.formatFireAt(reminderRow.modelData.fireAt)
-                                    color: root.accentColor
-                                    font.family: root.fontFamily
-                                    font.pixelSize: 11
-                                    font.weight: Font.DemiBold
                                 }
 
                                 Rectangle {
@@ -468,309 +622,101 @@ Item {
                         }
                     }
                 }
+            }
 
-                // --- Composer (add) view ----------------------------------------
-                ColumnLayout {
-                    anchors.fill: parent
-                    visible: root.viewMode === "add"
-                    spacing: root.sectionSpacing
+            // --- Quick add: always adds to the selected day -----------------
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.addRowHeight
+                spacing: 8
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 32
-                        radius: 8
-                        color: "#0a0a0a"
-                        border.width: 1
-                        border.color: reminderTextInput.activeFocus ? root.accentColor : "#232323"
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: root.addRowHeight
+                    radius: 8
+                    color: "#0a0a0a"
+                    border.width: 1
+                    border.color: reminderTextInput.activeFocus ? root.accentColor : "#232323"
 
-                        TextInput {
-                            id: reminderTextInput
+                    TextInput {
+                        id: reminderTextInput
 
-                            anchors.fill: parent
-                            anchors.leftMargin: 10
-                            anchors.rightMargin: 10
-                            verticalAlignment: Text.AlignVCenter
-                            color: root.primaryText
-                            font.family: root.fontFamily
-                            font.pixelSize: 12
-                            clip: true
-                            selectByMouse: true
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        verticalAlignment: Text.AlignVCenter
+                        color: root.primaryText
+                        font.family: root.fontFamily
+                        font.pixelSize: 12
+                        clip: true
+                        selectByMouse: true
 
-                            Keys.onReturnPressed: root.confirmReminder()
-                            Keys.onEnterPressed: root.confirmReminder()
-
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: reminderTextInput.text === ""
-                                text: "Remind me to…"
-                                color: "#5f5f5f"
-                                font.family: root.fontFamily
-                                font.pixelSize: 12
-                            }
-                        }
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        spacing: 6
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 22
-
-                            Rectangle {
-                                Layout.preferredWidth: 22
-                                Layout.preferredHeight: 22
-                                radius: 6
-                                color: prevMonthMouse.containsMouse && root.canGoToPreviousMonth ? "#1a1a1a" : "transparent"
-                                opacity: root.canGoToPreviousMonth ? 1 : 0.3
-
-                                MIcon {
-                                    anchors.centerIn: parent
-                                    name: "chevron_left"
-                                    size: 14
-                                    color: root.secondaryText
-                                }
-
-                                MouseArea {
-                                    id: prevMonthMouse
-
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    enabled: root.canGoToPreviousMonth
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.goToMonth(-1)
-                                }
-                            }
-
-                            Text {
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                text: root.monthLabel
-                                color: root.primaryText
-                                font.family: root.fontFamily
-                                font.pixelSize: 12
-                                font.weight: Font.DemiBold
-                            }
-
-                            Rectangle {
-                                Layout.preferredWidth: 22
-                                Layout.preferredHeight: 22
-                                radius: 6
-                                color: nextMonthMouse.containsMouse ? "#1a1a1a" : "transparent"
-
-                                MIcon {
-                                    anchors.centerIn: parent
-                                    name: "chevron_right"
-                                    size: 14
-                                    color: root.secondaryText
-                                }
-
-                                MouseArea {
-                                    id: nextMonthMouse
-
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.goToMonth(1)
-                                }
-                            }
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 16
-                            spacing: 0
-
-                            Repeater {
-                                model: root.weekdayLabels
-
-                                Text {
-                                    required property string modelData
-
-                                    Layout.fillWidth: true
-                                    horizontalAlignment: Text.AlignHCenter
-                                    text: modelData
-                                    color: root.secondaryText
-                                    font.family: root.fontFamily
-                                    font.pixelSize: 9
-                                }
-                            }
-                        }
-
-                        GridLayout {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            columns: 7
-                            rowSpacing: 2
-                            columnSpacing: 0
-
-                            Repeater {
-                                model: root.calendarCells
-
-                                Rectangle {
-                                    id: dayCell
-
-                                    required property var modelData
-
-                                    Layout.fillWidth: true
-                                    Layout.fillHeight: true
-                                    radius: 6
-                                    color: dayCell.modelData && dayCell.modelData.isSelected ? root.accentColor : (dayCell.modelData && dayMouse.containsMouse && !dayCell.modelData.isPast ? "#1a1a1a" : "transparent")
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        visible: dayCell.modelData !== null
-                                        text: dayCell.modelData ? dayCell.modelData.day : ""
-                                        color: {
-                                            if (!dayCell.modelData)
-                                                return root.secondaryText;
-                                            if (dayCell.modelData.isSelected)
-                                                return "#0b0b0b";
-                                            if (dayCell.modelData.isPast)
-                                                return "#444444";
-                                            if (dayCell.modelData.isToday)
-                                                return root.accentColor;
-
-                                            return root.primaryText;
-                                        }
-                                        font.family: root.fontFamily
-                                        font.pixelSize: 11
-                                        font.weight: dayCell.modelData && dayCell.modelData.isToday ? Font.Bold : Font.Normal
-                                    }
-
-                                    MouseArea {
-                                        id: dayMouse
-
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        enabled: dayCell.modelData !== null && !dayCell.modelData.isPast
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.selectedDate = new Date(root.viewYear, root.viewMonth, dayCell.modelData.day)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 32
-                        spacing: 8
-
-                        Rectangle {
-                            Layout.preferredWidth: 44
-                            Layout.preferredHeight: 32
-                            radius: 8
-                            color: "#0a0a0a"
-                            border.width: 1
-                            border.color: hoursInput.activeFocus ? root.accentColor : "#232323"
-
-                            TextInput {
-                                id: hoursInput
-
-                                anchors.fill: parent
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                color: root.primaryText
-                                font.family: root.fontFamily
-                                font.pixelSize: 13
-                                maximumLength: 2
-                                validator: IntValidator {
-                                    bottom: 0
-                                    top: 23
-                                }
-                                text: root.draftHours
-
-                                onTextChanged: root.draftHours = text
-                                onEditingFinished: text = text.padStart(2, "0")
-                                Keys.onReturnPressed: root.confirmReminder()
-                                Keys.onEnterPressed: root.confirmReminder()
-                            }
-                        }
+                        onTextChanged: root.draftText = text
+                        Keys.onReturnPressed: root.confirmReminder()
+                        Keys.onEnterPressed: root.confirmReminder()
 
                         Text {
-                            text: ":"
-                            color: root.secondaryText
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: reminderTextInput.text === ""
+                            text: "Remind me to…"
+                            color: "#5f5f5f"
                             font.family: root.fontFamily
-                            font.pixelSize: 14
-                        }
-
-                        Rectangle {
-                            Layout.preferredWidth: 44
-                            Layout.preferredHeight: 32
-                            radius: 8
-                            color: "#0a0a0a"
-                            border.width: 1
-                            border.color: minutesFieldInput.activeFocus ? root.accentColor : "#232323"
-
-                            TextInput {
-                                id: minutesFieldInput
-
-                                anchors.fill: parent
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                color: root.primaryText
-                                font.family: root.fontFamily
-                                font.pixelSize: 13
-                                maximumLength: 2
-                                validator: IntValidator {
-                                    bottom: 0
-                                    top: 59
-                                }
-                                text: root.draftMinutes
-
-                                onTextChanged: root.draftMinutes = text
-                                onEditingFinished: text = text.padStart(2, "0")
-                                Keys.onReturnPressed: root.confirmReminder()
-                                Keys.onEnterPressed: root.confirmReminder()
-                            }
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                        Rectangle {
-                            Layout.preferredWidth: 100
-                            Layout.preferredHeight: 32
-                            radius: 8
-                            color: root.canConfirm ? (confirmMouse.containsMouse ? "#c98f4d" : root.accentColor) : "#151515"
-                            border.width: 1
-                            border.color: root.canConfirm ? root.accentColor : "#232323"
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: "Set Reminder"
-                                color: root.canConfirm ? "#0b0b0b" : "#555555"
-                                font.family: root.fontFamily
-                                font.pixelSize: 11
-                                font.weight: Font.DemiBold
-                            }
-
-                            MouseArea {
-                                id: confirmMouse
-
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                enabled: root.canConfirm
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.confirmReminder()
-                            }
+                            font.pixelSize: 12
                         }
                     }
                 }
-            }
 
-            Text {
-                Layout.fillWidth: true
-                Layout.preferredHeight: root.footerHeight
-                horizontalAlignment: Text.AlignRight
-                text: root.viewMode === "list" ? (root.reminders.length === 0 ? "" : root.reminders.length + (root.reminders.length === 1 ? " reminder" : " reminders")) : (root.canConfirm ? "" : "Pick a future date and time")
-                color: root.secondaryText
-                font.family: root.fontFamily
-                font.pixelSize: 10
+                Rectangle {
+                    Layout.preferredWidth: 56
+                    Layout.preferredHeight: root.addRowHeight
+                    radius: 8
+                    color: "#0a0a0a"
+                    border.width: 1
+                    border.color: timeInput.activeFocus ? root.accentColor : (root.parsedDraftTime ? "#232323" : "#4a2a2a")
+
+                    TextInput {
+                        id: timeInput
+
+                        anchors.fill: parent
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        color: root.primaryText
+                        font.family: root.fontFamily
+                        font.pixelSize: 12
+                        maximumLength: 5
+                        text: root.draftTime
+
+                        onTextChanged: root.draftTime = text
+                        Keys.onReturnPressed: root.confirmReminder()
+                        Keys.onEnterPressed: root.confirmReminder()
+                    }
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: root.addRowHeight
+                    Layout.preferredHeight: root.addRowHeight
+                    radius: 8
+                    color: root.canConfirm ? (addMouse.containsMouse ? "#3fc26f" : root.accentColor) : "#151515"
+                    border.width: 1
+                    border.color: root.canConfirm ? root.accentColor : "#232323"
+
+                    MIcon {
+                        anchors.centerIn: parent
+                        name: "add"
+                        size: 16
+                        color: root.canConfirm ? "#0b0b0b" : "#555555"
+                    }
+
+                    MouseArea {
+                        id: addMouse
+
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: root.canConfirm
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.confirmReminder()
+                    }
+                }
             }
         }
     }

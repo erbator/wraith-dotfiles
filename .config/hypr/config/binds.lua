@@ -174,6 +174,9 @@ hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier ca
 -- Reminders (pop up + alert sound when they fire; also used by the timer).
 hl.bind(mainMod .. " + R", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier reminder"))
 
+-- Weather (current conditions, hourly/daily forecast).
+hl.bind(mainMod .. " + M", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier weather"))
+
 -- Power menu: Lock, Logout, Sleep, Reboot, Shutdown (hold each to confirm).
 -- Super+L still locks directly and instantly, as it always has.
 hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier power"))

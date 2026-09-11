@@ -11,8 +11,7 @@ Item {
 
     readonly property color primaryText: "#f7f7f7"
     readonly property color secondaryText: "#777777"
-    readonly property color accentColor: "#5eead4"
-    readonly property color activeMarkColor: "#4ade80"
+    readonly property color accentColor: "#4ade80"
     readonly property int panelPadding: 16
     readonly property int headerHeight: 32
     readonly property int searchRowHeight: 32
@@ -91,7 +90,19 @@ Item {
 
         command: ["cat", root.currentThemePath]
         stdout: StdioCollector {
-            onStreamFinished: root.currentThemeId = text.trim()
+            onStreamFinished: {
+                root.currentThemeId = text.trim();
+
+                // Jump the highlight (and scroll) to whichever theme is
+                // actually applied, instead of always landing on index 0 —
+                // otherwise the bordered "highlighted" card and the dot
+                // marking the real active theme could be two different
+                // cards, which read as broken.
+                const index = root.filteredThemes.findIndex(theme => theme.id === root.currentThemeId);
+
+                if (index !== -1)
+                    root.highlightIndex = index;
+            }
         }
     }
 
@@ -119,6 +130,7 @@ Item {
 
     onVisibleChanged: {
         if (root.visible) {
+            themeSearchInput.text = "";
             readCurrentThemeProcess.running = false;
             readCurrentThemeProcess.running = true;
             themeSearchInput.forceActiveFocus();
@@ -320,29 +332,25 @@ Item {
                         border.width: themeCard.selected ? 2 : 1
                         border.color: themeCard.selected ? root.accentColor : "#232323"
 
-                        Rectangle {
-                            visible: themeCard.isActive
-                            anchors.top: parent.top
-                            anchors.right: parent.right
-                            anchors.margins: 6
-                            width: 6
-                            height: 6
-                            radius: 3
-                            color: root.activeMarkColor
-                        }
-
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 10
-                            spacing: 8
+                            anchors.margins: 8
+                            spacing: 4
 
-                            Item {
+                            // Plain background swatch + bold color dots — a
+                            // fake mini window (titlebar, scaled-down "text
+                            // lines") turned out to read as clutter at 90px
+                            // regardless of which colors it used. This is
+                            // simpler and the actual colors carry it instead.
+                            Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
+                                radius: 8
+                                color: themeCard.modelData.background
 
                                 Row {
                                     anchors.centerIn: parent
-                                    spacing: 4
+                                    spacing: 3
 
                                     Repeater {
                                         model: [themeCard.modelData.colors.red, themeCard.modelData.colors.yellow, themeCard.modelData.colors.green, themeCard.modelData.colors.cyan, themeCard.modelData.colors.blue, themeCard.modelData.colors.magenta]
@@ -350,24 +358,33 @@ Item {
                                         Rectangle {
                                             required property string modelData
 
-                                            width: 9
-                                            height: 9
-                                            radius: 4.5
+                                            width: 10
+                                            height: 10
+                                            radius: 5
                                             color: modelData
                                         }
                                     }
                                 }
                             }
 
-                            Text {
+                            // A dedicated strip below the mock window for the
+                            // "currently applied" dot — it used to overlay the
+                            // window's own top-right corner (they nearly
+                            // touched once the card lost its name label),
+                            // which looked like a stray mark on the preview
+                            // rather than a clean status indicator.
+                            Item {
                                 Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignHCenter
-                                text: themeCard.modelData.name
-                                elide: Text.ElideRight
-                                color: themeCard.selected ? root.primaryText : root.secondaryText
-                                font.family: root.fontFamily
-                                font.pixelSize: 10
-                                font.weight: Font.DemiBold
+                                Layout.preferredHeight: 6
+
+                                Rectangle {
+                                    visible: themeCard.isActive
+                                    anchors.centerIn: parent
+                                    width: 6
+                                    height: 6
+                                    radius: 3
+                                    color: root.accentColor
+                                }
                             }
                         }
 
@@ -392,7 +409,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: root.statusText
-                color: root.activeMarkColor
+                color: root.accentColor
                 elide: Text.ElideRight
                 font.family: root.fontFamily
                 font.pixelSize: 10

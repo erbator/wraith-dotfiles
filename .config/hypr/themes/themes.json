@@ -18,24 +18,6 @@
     }
   },
   {
-    "id": "gruvbox-material",
-    "name": "Gruvbox Material",
-    "mode": "dark",
-    "accent": "#7daea3",
-    "background": "#282828",
-    "darkBackground": "#1e1e1e",
-    "foreground": "#dfbf8e",
-    "muted": "#665c54",
-    "colors": {
-      "red": "#ea6962",
-      "yellow": "#e78a4e",
-      "green": "#a9b665",
-      "cyan": "#89b482",
-      "blue": "#7daea3",
-      "magenta": "#d3869b"
-    }
-  },
-  {
     "id": "kanagawa",
     "name": "Kanagawa",
     "mode": "dark",
@@ -75,18 +57,18 @@
     "id": "industrial",
     "name": "Industrial",
     "mode": "dark",
-    "accent": "#c9a227",
-    "background": "#1b1c1d",
-    "darkBackground": "#131414",
-    "foreground": "#c9c9c7",
-    "muted": "#5b5d5e",
+    "accent": "#0061ac",
+    "background": "#3b3b3b",
+    "darkBackground": "#004479",
+    "foreground": "#e2e2e2",
+    "muted": "#707070",
     "colors": {
-      "red": "#b5544a",
-      "yellow": "#c9a227",
-      "green": "#6f8f6a",
-      "cyan": "#5f8a8f",
-      "blue": "#5b7a99",
-      "magenta": "#8a7a8f"
+      "red": "#ff0000",
+      "yellow": "#a67c3d",
+      "green": "#5f8a72",
+      "cyan": "#4a8fa8",
+      "blue": "#0061ac",
+      "magenta": "#6f6f94"
     }
   },
   {

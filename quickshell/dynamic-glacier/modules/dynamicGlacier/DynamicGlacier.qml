@@ -142,7 +142,7 @@ Scope {
     readonly property int clipboardMaxPanelHeight: 420
     readonly property int timetableWidth: 420
     readonly property int timetableMinHeight: 132
-    readonly property int timetableMaxPanelHeight: 420
+    readonly property int timetableMaxPanelHeight: 470
     readonly property int timerWidth: 340
     readonly property int timerMinHeight: 132
     readonly property int timerMaxPanelHeight: 260
@@ -152,9 +152,12 @@ Scope {
     readonly property int themeWidth: 440
     readonly property int themeMinHeight: 132
     readonly property int themeMaxPanelHeight: 250
-    readonly property int reminderWidth: 400
+    readonly property int reminderWidth: 380
     readonly property int reminderMinHeight: 132
-    readonly property int reminderMaxPanelHeight: 420
+    readonly property int reminderMaxPanelHeight: 400
+    readonly property int weatherWidth: 400
+    readonly property int weatherMinHeight: 132
+    readonly property int weatherMaxPanelHeight: 590
 
     // Clipboard history (morphs the island into mode "clipboard"). Backed by
     // cliphist — Qt's own clipboard API can't reliably see copies made by
@@ -303,6 +306,13 @@ Scope {
     readonly property string wallpaperDir: Quickshell.env("HOME") + "/Pictures/Wallpapers"
     readonly property string wallpaperStatePath: Quickshell.statePath("wallpaper.json")
     property var wallpaperEntries: []
+    // {folderName: [fileName, ...]}, plus loose files sitting directly in
+    // wallpaperDir — both populated from one scan, so browsing into/out of
+    // a folder never needs to touch the filesystem again.
+    property var wallpaperFolderMap: ({})
+    property var wallpaperRootFiles: []
+    // "" means the folder list itself is showing.
+    property string wallpaperCurrentFolder: ""
     property string currentWallpaperPath: ""
     property string wallpaperStatusText: ""
     property bool wallpaperApplying: false
@@ -347,6 +357,8 @@ Scope {
             return root.themeWidth;
         case "reminder":
             return root.reminderWidth;
+        case "weather":
+            return root.weatherWidth;
         default:
             if (root.interactionOpen)
                 return root.exitPreviewActive ? Math.max(root.peekWidth, root.exitPreviewWidth) : root.peekWidth;
@@ -392,6 +404,8 @@ Scope {
             return root.themeMinHeight;
         case "reminder":
             return root.reminderMinHeight;
+        case "weather":
+            return root.weatherMinHeight;
         default:
             if (root.interactionOpen)
                 return root.peekHeight;
@@ -419,7 +433,7 @@ Scope {
     function scheduleInteractionClose() {
         // Detail panels are hover-owned even when the idle island was pinned.
         // Keeping the pinned state only applies to the compact idle peek.
-        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder" || !root.pinnedOpen)
+        if (root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder" || root.mode === "weather" || !root.pinnedOpen)
             hoverLeaveTimer.restart();
     }
 
@@ -1530,27 +1544,102 @@ Scope {
         root.exitPreviewActive = false;
         root.mode = "wallpaper";
         root.wallpaperStatusText = "";
+        root.wallpaperCurrentFolder = "";
         root.wallpaperHighlightIndex = 0;
         panelFocusGrab.active = true;
 
         if (!root.wallpaperScanned)
             root.scanWallpapers();
+        else
+            root.rebuildWallpaperEntries();
     }
 
+    // Single recursive-ish scan (one level of subfolders) covers the whole
+    // library in one process instead of a request per folder — entering a
+    // folder afterwards is then just a local rebuild, no rescan needed.
     function scanWallpapers() {
         root.wallpaperScanned = true;
-        wallpaperScanProc.exec(["sh", "-c", "find " + JSON.stringify(root.wallpaperDir) + " -maxdepth 1 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' \\) -printf '%f\\n' | sort"]);
+        wallpaperScanProc.exec(["sh", "-c", "find " + JSON.stringify(root.wallpaperDir) + " -mindepth 1 -maxdepth 2 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' \\) -printf '%P\\n' | sort"]);
     }
 
+    // Every line is either "file.jpg" (loose, directly in wallpaperDir) or
+    // "folder/file.jpg" (one level down) — %P already gives paths relative
+    // to wallpaperDir, so a missing "/" is exactly the "loose file" case.
     function parseWallpaperEntries(text) {
-        const names = text.split("\n").filter(name => name.trim() !== "");
+        const lines = text.split("\n").filter(line => line !== "");
+        const folderMap = {};
+        const rootFiles = [];
 
-        root.wallpaperEntries = names.map(name => ({
-            name: name,
-            path: root.wallpaperDir + "/" + name
-        }));
+        for (const line of lines) {
+            const slashIndex = line.indexOf("/");
+
+            if (slashIndex === -1) {
+                rootFiles.push(line);
+            } else {
+                const folder = line.slice(0, slashIndex);
+                const file = line.slice(slashIndex + 1);
+
+                if (!folderMap[folder])
+                    folderMap[folder] = [];
+
+                folderMap[folder].push(file);
+            }
+        }
+
+        root.wallpaperFolderMap = folderMap;
+        root.wallpaperRootFiles = rootFiles;
+        root.rebuildWallpaperEntries();
+    }
+
+    // Recomputes what the grid should show for the current folder (or the
+    // folder list, at the root) from the already-scanned data — no process
+    // spawned, so entering/leaving a folder is instant.
+    function rebuildWallpaperEntries() {
+        if (root.wallpaperCurrentFolder === "") {
+            const folderNames = Object.keys(root.wallpaperFolderMap).sort();
+            const folderEntries = folderNames.map(name => {
+                const files = root.wallpaperFolderMap[name];
+
+                return {
+                    kind: "folder",
+                    name: name,
+                    count: files.length,
+                    path: root.wallpaperDir + "/" + name,
+                    thumbnailPath: root.wallpaperDir + "/" + name + "/" + files[0]
+                };
+            });
+            const rootImageEntries = root.wallpaperRootFiles.slice().sort().map(file => ({
+                kind: "image",
+                name: file,
+                path: root.wallpaperDir + "/" + file,
+                thumbnailPath: root.wallpaperDir + "/" + file
+            }));
+
+            root.wallpaperEntries = folderEntries.concat(rootImageEntries);
+        } else {
+            const files = root.wallpaperFolderMap[root.wallpaperCurrentFolder] || [];
+
+            root.wallpaperEntries = files.slice().sort().map(file => ({
+                kind: "image",
+                name: file,
+                path: root.wallpaperDir + "/" + root.wallpaperCurrentFolder + "/" + file,
+                thumbnailPath: root.wallpaperDir + "/" + root.wallpaperCurrentFolder + "/" + file
+            }));
+        }
 
         root.wallpaperHighlightIndex = root.clampIndex(root.wallpaperHighlightIndex, root.wallpaperEntries.length);
+    }
+
+    function enterWallpaperFolder(name) {
+        root.wallpaperCurrentFolder = name;
+        root.wallpaperHighlightIndex = 0;
+        root.rebuildWallpaperEntries();
+    }
+
+    function exitWallpaperFolder() {
+        root.wallpaperCurrentFolder = "";
+        root.wallpaperHighlightIndex = 0;
+        root.rebuildWallpaperEntries();
     }
 
     function applyWallpaper(path) {
@@ -1607,8 +1696,22 @@ Scope {
     function activateWallpaperHighlight() {
         const entry = root.wallpaperEntries[root.wallpaperHighlightIndex];
 
-        if (entry)
+        if (!entry)
+            return;
+
+        if (entry.kind === "folder")
+            root.enterWallpaperFolder(entry.name);
+        else
             root.applyWallpaper(entry.path);
+    }
+
+    // Mouse clicks report the tile's index rather than always going through
+    // whatever is keyboard-highlighted — clicking a tile should act on that
+    // tile, not silently apply/enter something else that happened to be
+    // highlighted from an earlier arrow-key press.
+    function activateWallpaperEntry(index) {
+        root.wallpaperHighlightIndex = index;
+        root.activateWallpaperHighlight();
     }
 
     // Morphs the island into the timetable, or collapses it back to idle if
@@ -1683,6 +1786,20 @@ Scope {
         collapseTimer.stop();
         root.exitPreviewActive = false;
         root.mode = "reminder";
+        panelFocusGrab.active = true;
+    }
+
+    // Morphs the island into the weather panel, or collapses it back to
+    // idle if it is already showing. Mirrors toggleReminderPanel.
+    function toggleWeatherPanel() {
+        if (root.mode === "weather") {
+            root.showIdle();
+            return;
+        }
+
+        collapseTimer.stop();
+        root.exitPreviewActive = false;
+        root.mode = "weather";
         panelFocusGrab.active = true;
     }
 
@@ -1982,7 +2099,7 @@ Scope {
         onTriggered: {
             root.pointerInside = false;
 
-            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder")
+            if (root.exitPreviewActive || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder" || root.mode === "weather")
                 root.showIdle();
         }
     }
@@ -2548,7 +2665,7 @@ Scope {
         // Tall enough for the tallest expanded panel so the morph never clips.
         // The surface is transparent and input is limited to `mask`, so the extra
         // room costs nothing.
-        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 260, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32, root.timerMaxPanelHeight + 32, root.todoMaxPanelHeight + 32, root.themeMaxPanelHeight + 32, root.reminderMaxPanelHeight + 32)
+        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 260, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32, root.timerMaxPanelHeight + 32, root.todoMaxPanelHeight + 32, root.themeMaxPanelHeight + 32, root.reminderMaxPanelHeight + 32, root.weatherMaxPanelHeight + 32)
         visible: true
 
         // end-4 already enables compositor blur for `quickshell:*` surfaces.
@@ -2694,6 +2811,7 @@ Scope {
                 appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
                 appsPickerHighlightIndex: root.appsPickerHighlightIndex
                 wallpaperEntries: root.wallpaperEntries
+                wallpaperCurrentFolder: root.wallpaperCurrentFolder
                 currentWallpaperPath: root.currentWallpaperPath
                 wallpaperStatusText: root.wallpaperStatusText
                 wallpaperApplying: root.wallpaperApplying
@@ -2748,7 +2866,8 @@ Scope {
                 onAppsLaunchRequested: id => root.launchFavoriteApp(id)
                 onWallpaperCloseRequested: root.closePanelToWideIdle(root.wallpaperWidth)
                 onWallpaperRefreshRequested: root.scanWallpapers()
-                onWallpaperApplyRequested: path => root.applyWallpaper(path)
+                onWallpaperEntryActivated: index => root.activateWallpaperEntry(index)
+                onWallpaperBackRequested: root.exitWallpaperFolder()
                 onWallpaperHighlightNavRequested: (dx, dy) => root.moveWallpaperHighlight(dx, dy)
                 onWallpaperActivateRequested: root.activateWallpaperHighlight()
                 onCalcCloseRequested: root.closePanelToWideIdle(root.calcWidth)
@@ -2766,6 +2885,7 @@ Scope {
                 onTodoCloseRequested: root.closePanelToWideIdle(root.todoWidth)
                 onThemeCloseRequested: root.closePanelToWideIdle(root.themeWidth)
                 onReminderCloseRequested: root.closePanelToWideIdle(root.reminderWidth)
+                onWeatherCloseRequested: root.closePanelToWideIdle(root.weatherWidth)
                 onReminderFired: text => {
                     root.showNotification("Reminder", text, "Reminders", 8000);
                     root.playAlertSound();
@@ -2930,7 +3050,7 @@ Scope {
                 width: island.width
                 height: root.mode === "idle" && !root.interactionOpen ? Math.max(root.reservedZone, island.height) : island.height
                 hoverEnabled: true
-                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.visualMode === "calc" || root.visualMode === "power" || root.visualMode === "clipboard" || root.visualMode === "timetable" || root.visualMode === "timer" || root.visualMode === "todo" || root.visualMode === "theme" || root.visualMode === "reminder" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
+                acceptedButtons: root.visualMode === "media" || root.visualMode === "wifi" || root.visualMode === "bluetooth" || root.visualMode === "battery" || root.visualMode === "settings" || root.visualMode === "apps" || root.visualMode === "wallpaper" || root.visualMode === "calc" || root.visualMode === "power" || root.visualMode === "clipboard" || root.visualMode === "timetable" || root.visualMode === "timer" || root.visualMode === "todo" || root.visualMode === "theme" || root.visualMode === "reminder" || root.visualMode === "weather" || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
                 cursorShape: Qt.PointingHandCursor
                 onEntered: root.keepInteractionOpen(true)
                 onPositionChanged: mouse => root.maybeFinishExitPreview(mouse.x, width)
@@ -2979,7 +3099,7 @@ Scope {
         windows: [islandWindow]
 
         onCleared: {
-            if (root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder")
+            if (root.mode === "apps" || root.mode === "wallpaper" || root.mode === "calc" || root.mode === "power" || root.mode === "clipboard" || root.mode === "timetable" || root.mode === "timer" || root.mode === "todo" || root.mode === "theme" || root.mode === "reminder" || root.mode === "weather")
                 root.showIdle();
         }
     }
@@ -3080,6 +3200,10 @@ Scope {
 
         function reminder(): void {
             root.toggleReminderPanel();
+        }
+
+        function weather(): void {
+            root.toggleWeatherPanel();
         }
 
         function screenshotTaken(path: string): void {

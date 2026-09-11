@@ -117,6 +117,7 @@ Item {
     property real wallpaperMorph: 0
     readonly property real wallpaperContentHeight: wallpaperContent.contentHeight
     property var wallpaperEntries: []
+    property string wallpaperCurrentFolder: ""
     property string currentWallpaperPath: ""
     property string wallpaperStatusText: ""
     property bool wallpaperApplying: false
@@ -147,6 +148,9 @@ Item {
 
     property real reminderMorph: 0
     readonly property real reminderContentHeight: reminderContent.contentHeight
+
+    property real weatherMorph: 0
+    readonly property real weatherContentHeight: weatherContent.contentHeight
 
     property var favoriteAppEntries: []
     property var favoriteAppIds: []
@@ -201,7 +205,7 @@ Item {
     readonly property int favoriteAppCount: root.favoriteAppIds.length
 
     // Only one panel morph is ever non-zero, so the peek can react to whichever is running.
-    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph, root.calcMorph, root.powerMorph, root.clipboardMorph, root.timetableMorph, root.timerMorph, root.todoMorph, root.themeMorph, root.reminderMorph)
+    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph, root.calcMorph, root.powerMorph, root.clipboardMorph, root.timetableMorph, root.timerMorph, root.todoMorph, root.themeMorph, root.reminderMorph, root.weatherMorph)
 
     // The peek stays mounted through the morph so it can fade/shrink into the panel.
     readonly property bool peekVisible: (root.mode === "idle" && root.forceExpanded) || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps"
@@ -240,7 +244,8 @@ Item {
     signal settingsResetRequested
     signal wallpaperCloseRequested
     signal wallpaperRefreshRequested
-    signal wallpaperApplyRequested(string path)
+    signal wallpaperEntryActivated(int index)
+    signal wallpaperBackRequested
     signal wallpaperHighlightNavRequested(int dx, int dy)
     signal wallpaperActivateRequested
     signal calcCloseRequested
@@ -249,6 +254,7 @@ Item {
     signal todoCloseRequested
     signal themeCloseRequested
     signal reminderCloseRequested
+    signal weatherCloseRequested
     signal reminderFired(string text)
     signal timerPhaseCompleted(string label)
     signal powerCloseRequested
@@ -1245,6 +1251,7 @@ Item {
 
         anchors.fill: parent
         entries: root.wallpaperEntries
+        currentFolder: root.wallpaperCurrentFolder
         currentPath: root.currentWallpaperPath
         statusText: root.wallpaperStatusText
         applying: root.wallpaperApplying
@@ -1254,7 +1261,8 @@ Item {
         onCloseRequested: root.wallpaperCloseRequested()
         onSettingsRequested: root.glacierSettingsRequested()
         onRefreshRequested: root.wallpaperRefreshRequested()
-        onApplyRequested: path => root.wallpaperApplyRequested(path)
+        onEntryActivated: index => root.wallpaperEntryActivated(index)
+        onBackRequested: root.wallpaperBackRequested()
         onHighlightNavRequested: (dx, dy) => root.wallpaperHighlightNavRequested(dx, dy)
         onActivateRequested: root.wallpaperActivateRequested()
     }
@@ -1299,6 +1307,16 @@ Item {
         onCloseRequested: root.reminderCloseRequested()
         onSettingsRequested: root.glacierSettingsRequested()
         onReminderFired: text => root.reminderFired(text)
+    }
+
+    WeatherPanel {
+        id: weatherContent
+
+        anchors.fill: parent
+        fontFamily: root.fontFamily
+        morph: root.weatherMorph
+        onCloseRequested: root.weatherCloseRequested()
+        onSettingsRequested: root.glacierSettingsRequested()
     }
 
     TodoPanel {
