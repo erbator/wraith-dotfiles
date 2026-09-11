@@ -177,6 +177,18 @@ Scope {
         return root.keyboardPanelModes.indexOf(mode) !== -1;
     }
 
+    // Panels opened from a keybind (via the IPC handler) stay open when the
+    // pointer leaves the island; they close on Escape, their X button, the
+    // same keybind again, or (for keyboard panels) clicking another window.
+    // Mouse-opened ones keep the original hover-owned behavior. Cleared
+    // automatically whenever the island leaves detail-panel territory.
+    property bool panelOpenedByKeybind: false
+
+    onModeChanged: {
+        if (!root.isDetailPanel(root.mode))
+            root.panelOpenedByKeybind = false;
+    }
+
     // Clipboard history (morphs the island into mode "clipboard"). Backed by
     // cliphist — Qt's own clipboard API can't reliably see copies made by
     // other apps while unfocused on Wayland; cliphist watches via the
@@ -191,7 +203,8 @@ Scope {
         "Hack Nerd Font Mono",
         "SFMono Nerd Font Mono",
         "CaskaydiaCove Nerd Font Mono",
-        "MesloLGM Nerd Font Mono"
+        "MesloLGM Nerd Font Mono",
+        "SF Pro Display"
     ]
     readonly property var audioSink: Pipewire.defaultAudioSink
     readonly property bool mediaCanGoPrevious: root.activePlayer?.canGoPrevious ?? false
@@ -2122,7 +2135,7 @@ Scope {
         onTriggered: {
             root.pointerInside = false;
 
-            if (root.exitPreviewActive || root.isDetailPanel(root.mode))
+            if (root.exitPreviewActive || (root.isDetailPanel(root.mode) && !root.panelOpenedByKeybind))
                 root.showIdle();
         }
     }
@@ -3182,18 +3195,22 @@ Scope {
         }
 
         function apps(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleAppsPanel();
         }
 
         function wallpaper(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleWallpaperPanel();
         }
 
         function calculator(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleCalculatorPanel();
         }
 
         function power(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleLogoutPanel();
         }
 
@@ -3202,30 +3219,37 @@ Scope {
         }
 
         function clipboard(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleClipboardPanel();
         }
 
         function timetable(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleTimetablePanel();
         }
 
         function timer(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleTimerPanel();
         }
 
         function todo(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleTodoPanel();
         }
 
         function theme(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleThemePanel();
         }
 
         function reminder(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleReminderPanel();
         }
 
         function weather(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleWeatherPanel();
         }
 
@@ -3238,18 +3262,22 @@ Scope {
         }
 
         function wifi(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleWifiPanel();
         }
 
         function bluetooth(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleBluetoothPanel();
         }
 
         function battery(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleBatteryPanel();
         }
 
         function settings(): void {
+            root.panelOpenedByKeybind = true;
             root.toggleSettingsPanel();
         }
 

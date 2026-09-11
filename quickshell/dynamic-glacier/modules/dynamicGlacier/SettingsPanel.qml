@@ -350,7 +350,7 @@ Item {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
-                                text: fontChip.modelData.replace(" Nerd Font Mono", "")
+                                text: fontChip.modelData.replace(" Nerd Font Mono", "").replace(" Pro Display", " Pro")
                                 color: fontChip.selected ? "#050505" : "#cfcfcf"
                                 font.family: fontChip.modelData
                                 font.pixelSize: 10
