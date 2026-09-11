@@ -414,6 +414,7 @@ Item {
                                     text: root.periodLabel(blockRow.modelData)
                                     color: blockRow.isNow ? root.accentColor : root.primaryText
                                     font.family: root.fontFamily
+                                    font.features: { "tnum": 1 }
                                     font.pixelSize: 12
                                     font.weight: Font.Bold
                                 }
@@ -422,6 +423,7 @@ Item {
                                     text: root.timeLabel(blockRow.modelData)
                                     color: root.secondaryText
                                     font.family: root.fontFamily
+                                    font.features: { "tnum": 1 }
                                     font.pixelSize: 9
                                 }
                             }
@@ -501,6 +503,7 @@ Item {
                             text: Math.round(blockRow.progress * 100) + "%"
                             color: root.accentColor
                             font.family: root.fontFamily
+                            font.features: { "tnum": 1 }
                             font.pixelSize: 9
                             font.weight: Font.DemiBold
                         }

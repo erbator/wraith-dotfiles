@@ -687,6 +687,7 @@ Item {
                             text: root.current ? Math.round(root.current.temperature_2m) + "°" : (root.weatherError !== "" ? "—" : "…")
                             color: "#ffffff"
                             font.family: root.fontFamily
+                            font.features: { "tnum": 1 }
                             font.pixelSize: 46
                             font.weight: Font.Light
                         }
@@ -712,6 +713,7 @@ Item {
                                 color: "#ffffff"
                                 opacity: 0.75
                                 font.family: root.fontFamily
+                                font.features: { "tnum": 1 }
                                 font.pixelSize: 10
                             }
                         }
@@ -750,6 +752,7 @@ Item {
                             text: modelData.hourLabel
                             color: modelData.hourLabel === "Now" ? root.accentColor : root.secondaryText
                             font.family: root.fontFamily
+                            font.features: { "tnum": 1 }
                             font.pixelSize: 10
                             font.weight: modelData.hourLabel === "Now" ? Font.Bold : Font.Normal
                         }
@@ -766,6 +769,7 @@ Item {
                             text: modelData.temp + "°"
                             color: root.primaryText
                             font.family: root.fontFamily
+                            font.features: { "tnum": 1 }
                             font.pixelSize: 11
                             font.weight: Font.DemiBold
                         }
@@ -848,6 +852,7 @@ Item {
                                 elide: Text.ElideRight
                                 color: root.primaryText
                                 font.family: root.fontFamily
+                                font.features: { "tnum": 1 }
                                 font.pixelSize: 15
                                 font.weight: Font.DemiBold
                             }
@@ -896,6 +901,7 @@ Item {
                                 text: modelData.min + "°"
                                 color: root.secondaryText
                                 font.family: root.fontFamily
+                                font.features: { "tnum": 1 }
                                 font.pixelSize: 11
                             }
 
@@ -928,6 +934,7 @@ Item {
                                 text: modelData.max + "°"
                                 color: root.primaryText
                                 font.family: root.fontFamily
+                                font.features: { "tnum": 1 }
                                 font.pixelSize: 11
                                 font.weight: Font.DemiBold
                             }

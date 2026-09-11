@@ -392,6 +392,7 @@ Item {
                 text: root.items.length === 0 ? "" : root.completedCount + " of " + root.items.length + " done"
                 color: root.secondaryText
                 font.family: root.fontFamily
+                font.features: { "tnum": 1 }
                 font.pixelSize: 10
                 font.weight: Font.Bold
             }

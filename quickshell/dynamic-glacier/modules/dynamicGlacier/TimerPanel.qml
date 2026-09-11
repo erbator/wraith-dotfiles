@@ -381,6 +381,7 @@ Item {
                     text: root.activeTab === "pomodoro" ? root.formatMMSS(root.pomodoroRemaining) : root.formatHMS(root.stopwatchSeconds)
                     color: root.activeTimerRunning ? root.accentColor : root.primaryText
                     font.family: root.fontFamily
+                    font.features: { "tnum": 1 }
                     font.pixelSize: 40
                     font.weight: Font.Bold
                 }

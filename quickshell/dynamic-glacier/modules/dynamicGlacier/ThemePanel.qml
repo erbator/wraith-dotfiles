@@ -177,6 +177,7 @@ Item {
                 text: (root.filteredThemes.length) + "/" + root.themes.length
                 color: root.secondaryText
                 font.family: root.fontFamily
+                font.features: { "tnum": 1 }
                 font.pixelSize: 11
             }
 

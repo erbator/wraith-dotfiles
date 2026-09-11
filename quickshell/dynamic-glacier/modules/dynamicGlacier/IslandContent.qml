@@ -685,6 +685,7 @@ Item {
                                 text: root.btConnected ? (root.btBattery >= 0 ? root.btDeviceName + " " + root.btBattery + "%" : root.btDeviceName) : (root.btEnabled ? "On" : "Off")
                                 color: root.btConnected ? "#c8c8c8" : "#555555"
                                 font.family: root.fontFamily
+                                font.features: { "tnum": 1 }
                                 font.pixelSize: 11
                                 font.weight: Font.DemiBold
                                 elide: Text.ElideRight

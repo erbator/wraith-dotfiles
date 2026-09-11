@@ -521,6 +521,7 @@ Item {
                                         return root.primaryText;
                                     }
                                     font.family: root.fontFamily
+                                    font.features: { "tnum": 1 }
                                     font.pixelSize: 11
                                     font.weight: dayCell.modelData && (dayCell.modelData.isSelected || dayCell.modelData.isToday) ? Font.Bold : Font.Normal
                                 }
@@ -605,6 +606,7 @@ Item {
                                     }
                                     color: root.accentColor
                                     font.family: root.fontFamily
+                                    font.features: { "tnum": 1 }
                                     font.pixelSize: 11
                                     font.weight: Font.DemiBold
                                 }
@@ -709,6 +711,7 @@ Item {
                         verticalAlignment: Text.AlignVCenter
                         color: parent.timeInvalid ? "#f0736a" : root.primaryText
                         font.family: root.fontFamily
+                        font.features: { "tnum": 1 }
                         font.pixelSize: 12
                         maximumLength: 5
                         text: root.draftTime

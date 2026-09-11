@@ -250,6 +250,7 @@ Item {
                         text: root.level + "%"
                         color: root.primaryText
                         font.family: root.fontFamily
+                        font.features: { "tnum": 1 }
                         font.pixelSize: 24
                         font.weight: Font.Bold
                     }
@@ -283,6 +284,7 @@ Item {
                             text: root.health >= 0 ? root.health.toFixed(1) + "%" : "—"
                             color: root.healthColor()
                             font.family: root.fontFamily
+                            font.features: { "tnum": 1 }
                             font.pixelSize: 12
                             font.weight: Font.Bold
                         }
@@ -495,6 +497,7 @@ Item {
                 visible: text !== ""
                 color: "#666666"
                 font.family: root.fontFamily
+                font.features: { "tnum": 1 }
                 font.pixelSize: 9
                 font.weight: Font.DemiBold
             }

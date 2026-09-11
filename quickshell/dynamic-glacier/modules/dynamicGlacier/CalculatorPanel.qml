@@ -369,6 +369,7 @@ Item {
                     verticalAlignment: Text.AlignVCenter
                     color: root.primaryText
                     font.family: root.fontFamily
+                    font.features: { "tnum": 1 }
                     font.pixelSize: 14
                     clip: true
                     selectByMouse: true
@@ -451,6 +452,7 @@ Item {
                     text: root.hasResult ? "= " + root.formatNumber(root.displayValue) : ""
                     color: root.accentColor
                     font.family: root.fontFamily
+                    font.features: { "tnum": 1 }
                     font.pixelSize: 28
                     font.weight: Font.Bold
                     transformOrigin: Item.Right
