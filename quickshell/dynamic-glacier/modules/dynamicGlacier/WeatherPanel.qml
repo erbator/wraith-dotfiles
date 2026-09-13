@@ -6,16 +6,6 @@ Item {
     id: root
 
     property string fontFamily: "Noto Sans"
-
-    // SF Pro Display is an optical size drawn for 20px and up; below that it
-    // reads small and thin, so the sub-20px sizes get bumped whenever it is
-    // the selected family. Every other family (all monospace) is unchanged.
-    function fontPx(size) {
-        return root.fontFamily === "SF Pro Display" && size < 20 ? Math.round(size * 1.2) : size;
-    }
-    // Matching factor for the few fixed-width text columns that were sized
-    // for the old font's glyph widths.
-    readonly property real fontScale: root.fontFamily === "SF Pro Display" ? 1.2 : 1
     property real morph: 0
 
     readonly property color primaryText: "#f7f7f7"
@@ -323,7 +313,7 @@ Item {
                     color: root.primaryText
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: root.fontPx(15)
+                    font.pixelSize: 15
                     font.weight: Font.Bold
                 }
 
@@ -683,7 +673,7 @@ Item {
                         text: root.locationName
                         color: "#ffffff"
                         font.family: root.fontFamily
-                        font.pixelSize: root.fontPx(12)
+                        font.pixelSize: 12
                         font.weight: Font.DemiBold
                     }
 
@@ -698,7 +688,7 @@ Item {
                             color: "#ffffff"
                             font.family: root.fontFamily
                             font.features: { "tnum": 1 }
-                            font.pixelSize: root.fontPx(46)
+                            font.pixelSize: 46
                             font.weight: Font.Light
                         }
 
@@ -712,7 +702,7 @@ Item {
                                 text: root.weatherData ? root.info.label : (root.weatherError !== "" ? root.weatherError : "Loading…")
                                 color: "#ffffff"
                                 font.family: root.fontFamily
-                                font.pixelSize: root.fontPx(13)
+                                font.pixelSize: 13
                                 font.weight: Font.DemiBold
                             }
 
@@ -724,7 +714,7 @@ Item {
                                 opacity: 0.75
                                 font.family: root.fontFamily
                                 font.features: { "tnum": 1 }
-                                font.pixelSize: root.fontPx(10)
+                                font.pixelSize: 10
                             }
                         }
                     }
@@ -763,7 +753,7 @@ Item {
                             color: modelData.hourLabel === "Now" ? root.accentColor : root.secondaryText
                             font.family: root.fontFamily
                             font.features: { "tnum": 1 }
-                            font.pixelSize: root.fontPx(10)
+                            font.pixelSize: 10
                             font.weight: modelData.hourLabel === "Now" ? Font.Bold : Font.Normal
                         }
 
@@ -780,7 +770,7 @@ Item {
                             color: root.primaryText
                             font.family: root.fontFamily
                             font.features: { "tnum": 1 }
-                            font.pixelSize: root.fontPx(11)
+                            font.pixelSize: 11
                             font.weight: Font.DemiBold
                         }
                     }
@@ -849,7 +839,7 @@ Item {
                                     text: tile.modelData.label
                                     color: root.secondaryText
                                     font.family: root.fontFamily
-                                    font.pixelSize: root.fontPx(9)
+                                    font.pixelSize: 9
                                     font.weight: Font.DemiBold
                                 }
                             }
@@ -863,7 +853,7 @@ Item {
                                 color: root.primaryText
                                 font.family: root.fontFamily
                                 font.features: { "tnum": 1 }
-                                font.pixelSize: root.fontPx(15)
+                                font.pixelSize: 15
                                 font.weight: Font.DemiBold
                             }
                         }
@@ -891,11 +881,11 @@ Item {
                             spacing: 8
 
                             Text {
-                                Layout.preferredWidth: Math.round(46 * root.fontScale)
+                                Layout.preferredWidth: 46
                                 text: modelData.dayLabel
                                 color: root.primaryText
                                 font.family: root.fontFamily
-                                font.pixelSize: root.fontPx(11)
+                                font.pixelSize: 11
                                 font.weight: Font.DemiBold
                             }
 
@@ -907,12 +897,12 @@ Item {
                             }
 
                             Text {
-                                Layout.preferredWidth: Math.round(30 * root.fontScale)
+                                Layout.preferredWidth: 26
                                 text: modelData.min + "°"
                                 color: root.secondaryText
                                 font.family: root.fontFamily
                                 font.features: { "tnum": 1 }
-                                font.pixelSize: root.fontPx(11)
+                                font.pixelSize: 11
                             }
 
                             Item {
@@ -939,13 +929,13 @@ Item {
                             }
 
                             Text {
-                                Layout.preferredWidth: Math.round(30 * root.fontScale)
+                                Layout.preferredWidth: 26
                                 horizontalAlignment: Text.AlignRight
                                 text: modelData.max + "°"
                                 color: root.primaryText
                                 font.family: root.fontFamily
                                 font.features: { "tnum": 1 }
-                                font.pixelSize: root.fontPx(11)
+                                font.pixelSize: 11
                                 font.weight: Font.DemiBold
                             }
                         }

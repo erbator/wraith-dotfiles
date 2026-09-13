@@ -7,13 +7,6 @@ Item {
     id: root
 
     property string fontFamily: "Noto Sans"
-
-    // SF Pro Display is an optical size drawn for 20px and up; below that it
-    // reads small and thin, so the sub-20px sizes get bumped whenever it is
-    // the selected family. Every other family (all monospace) is unchanged.
-    function fontPx(size) {
-        return root.fontFamily === "SF Pro Display" && size < 20 ? Math.round(size * 1.2) : size;
-    }
     property real morph: 0
 
     readonly property color primaryText: "#f7f7f7"
@@ -337,7 +330,7 @@ Item {
                     color: root.primaryText
                     elide: Text.ElideRight
                     font.family: root.fontFamily
-                    font.pixelSize: root.fontPx(15)
+                    font.pixelSize: 15
                     font.weight: Font.Bold
                 }
 
@@ -431,7 +424,7 @@ Item {
                         text: root.monthLabel
                         color: root.primaryText
                         font.family: root.fontFamily
-                        font.pixelSize: root.fontPx(13)
+                        font.pixelSize: 13
                         font.weight: Font.DemiBold
 
                         MouseArea {
@@ -480,7 +473,7 @@ Item {
                             text: modelData
                             color: root.secondaryText
                             font.family: root.fontFamily
-                            font.pixelSize: root.fontPx(9)
+                            font.pixelSize: 9
                             font.weight: Font.DemiBold
                         }
                     }
@@ -529,7 +522,7 @@ Item {
                                     }
                                     font.family: root.fontFamily
                                     font.features: { "tnum": 1 }
-                                    font.pixelSize: root.fontPx(11)
+                                    font.pixelSize: 11
                                     font.weight: dayCell.modelData && (dayCell.modelData.isSelected || dayCell.modelData.isToday) ? Font.Bold : Font.Normal
                                 }
                             }
@@ -567,7 +560,7 @@ Item {
                     text: root.selectedDateLabel
                     color: root.secondaryText
                     font.family: root.fontFamily
-                    font.pixelSize: root.fontPx(10)
+                    font.pixelSize: 10
                     font.weight: Font.DemiBold
                 }
 
@@ -582,7 +575,7 @@ Item {
                         text: "No reminders"
                         color: root.mutedText
                         font.family: root.fontFamily
-                        font.pixelSize: root.fontPx(11)
+                        font.pixelSize: 11
                     }
 
                     ListView {
@@ -614,7 +607,7 @@ Item {
                                     color: root.accentColor
                                     font.family: root.fontFamily
                                     font.features: { "tnum": 1 }
-                                    font.pixelSize: root.fontPx(11)
+                                    font.pixelSize: 11
                                     font.weight: Font.DemiBold
                                 }
 
@@ -624,7 +617,7 @@ Item {
                                     elide: Text.ElideRight
                                     color: root.primaryText
                                     font.family: root.fontFamily
-                                    font.pixelSize: root.fontPx(12)
+                                    font.pixelSize: 12
                                 }
 
                                 Rectangle {
@@ -678,7 +671,7 @@ Item {
                         verticalAlignment: Text.AlignVCenter
                         color: root.primaryText
                         font.family: root.fontFamily
-                        font.pixelSize: root.fontPx(12)
+                        font.pixelSize: 12
                         clip: true
                         selectByMouse: true
 
@@ -692,7 +685,7 @@ Item {
                             text: "Remind me to…"
                             color: "#5f5f5f"
                             font.family: root.fontFamily
-                            font.pixelSize: root.fontPx(12)
+                            font.pixelSize: 12
                         }
                     }
                 }
@@ -719,7 +712,7 @@ Item {
                         color: parent.timeInvalid ? "#f0736a" : root.primaryText
                         font.family: root.fontFamily
                         font.features: { "tnum": 1 }
-                        font.pixelSize: root.fontPx(12)
+                        font.pixelSize: 12
                         maximumLength: 5
                         text: root.draftTime
 

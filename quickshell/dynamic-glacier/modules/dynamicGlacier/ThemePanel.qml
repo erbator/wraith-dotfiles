@@ -7,13 +7,6 @@ Item {
     id: root
 
     property string fontFamily: "Noto Sans"
-
-    // SF Pro Display is an optical size drawn for 20px and up; below that it
-    // reads small and thin, so the sub-20px sizes get bumped whenever it is
-    // the selected family. Every other family (all monospace) is unchanged.
-    function fontPx(size) {
-        return root.fontFamily === "SF Pro Display" && size < 20 ? Math.round(size * 1.2) : size;
-    }
     property real morph: 0
 
     readonly property color primaryText: "#f7f7f7"
@@ -176,7 +169,7 @@ Item {
                 color: root.primaryText
                 elide: Text.ElideRight
                 font.family: root.fontFamily
-                font.pixelSize: root.fontPx(15)
+                font.pixelSize: 15
                 font.weight: Font.Bold
             }
 
@@ -185,7 +178,7 @@ Item {
                 color: root.secondaryText
                 font.family: root.fontFamily
                 font.features: { "tnum": 1 }
-                font.pixelSize: root.fontPx(11)
+                font.pixelSize: 11
             }
 
             Rectangle {
@@ -265,7 +258,7 @@ Item {
                 verticalAlignment: Text.AlignVCenter
                 color: root.primaryText
                 font.family: root.fontFamily
-                font.pixelSize: root.fontPx(12)
+                font.pixelSize: 12
                 clip: true
                 selectByMouse: true
 
@@ -288,7 +281,7 @@ Item {
                     text: "Search themes…"
                     color: "#5f5f5f"
                     font.family: root.fontFamily
-                    font.pixelSize: root.fontPx(12)
+                    font.pixelSize: 12
                 }
             }
         }
@@ -303,7 +296,7 @@ Item {
                 text: "No themes found"
                 color: root.secondaryText
                 font.family: root.fontFamily
-                font.pixelSize: root.fontPx(12)
+                font.pixelSize: 12
             }
 
             ListView {
@@ -420,7 +413,7 @@ Item {
                 color: root.accentColor
                 elide: Text.ElideRight
                 font.family: root.fontFamily
-                font.pixelSize: root.fontPx(10)
+                font.pixelSize: 10
                 font.weight: Font.Bold
             }
 
@@ -429,7 +422,7 @@ Item {
                 text: "Enter to apply"
                 color: root.secondaryText
                 font.family: root.fontFamily
-                font.pixelSize: root.fontPx(10)
+                font.pixelSize: 10
             }
         }
     }
