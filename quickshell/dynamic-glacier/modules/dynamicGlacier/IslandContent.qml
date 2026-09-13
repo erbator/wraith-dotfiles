@@ -25,6 +25,8 @@ Item {
     property bool loopActive: false
     property bool loopSupported: false
     property real mediaPosition: 0
+    property var lyricsLines: []
+    property int lyricsIndex: -1
     property real mediaLength: 0
     property bool forceExpanded: false
     property bool mediaAvailable: false
@@ -2132,394 +2134,707 @@ Item {
         }
     }
 
-    RowLayout {
+    ColumnLayout {
         id: mediaContent
 
         anchors.fill: parent
         anchors.leftMargin: root.mediaHorizontalPadding
         anchors.rightMargin: root.mediaHorizontalPadding
-        spacing: 24
+        spacing: 0
         opacity: root.mode === "media" ? 1 : 0
         visible: opacity > 0
 
-        Rectangle {
-            id: mediaArtwork
+        // Vinyl + track block. Fills the plain 132px card, and keeps that
+        // exact layout when the lyrics window below it makes the card taller.
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 24
 
-            Layout.alignment: Qt.AlignVCenter
-            Layout.preferredWidth: 54
-            Layout.preferredHeight: 54
-            radius: 18
-            color: "#000000"
-            border.width: 1
-            border.color: root.playing ? "#2a2a2a" : "#171717"
-            clip: true
+            // Cover art as a spinning vinyl: black disc with grooves, the album
+            // art as the record label, a center hole, and a static sheen on top.
+            // Spins while playing and coasts to a stop when paused instead of
+            // freezing mid-turn.
+            Item {
+                id: mediaArtwork
 
-            Image {
-                id: mediaCoverSource
+                readonly property int discSize: 96
+                readonly property int labelSize: 52
+                // 1 = full speed. Bound to playback, but eased so play/pause
+                // ramps the turntable up/down rather than snapping.
+                property real spinSpeed: root.playing && mediaContent.visible ? 1 : 0
 
-                anchors.fill: parent
-                source: root.artUrl
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
-                visible: false
-            }
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: discSize
+                Layout.preferredHeight: discSize
 
-            OpacityMask {
-                anchors.fill: parent
-                source: mediaCoverSource
-                visible: root.artUrl !== "" && mediaCoverSource.status === Image.Ready
+                Behavior on spinSpeed {
+                    NumberAnimation {
+                        duration: 900
+                        easing.type: Easing.InOutCubic
+                    }
+                }
 
-                maskSource: Rectangle {
-                    width: mediaArtwork.width
-                    height: mediaArtwork.height
-                    radius: mediaArtwork.radius
+                FrameAnimation {
+                    // Stops on its own once the speed has eased to zero, so a
+                    // paused (or hidden) record costs nothing.
+                    running: mediaArtwork.spinSpeed > 0.001
+                    onTriggered: vinylDisc.rotation = (vinylDisc.rotation + mediaArtwork.spinSpeed * frameTime * (360 / 2.4)) % 360
+                }
+
+                Item {
+                    id: vinylDisc
+
+                    anchors.fill: parent
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: width / 2
+                        color: "#0c0c0c"
+                        border.width: 1
+                        border.color: "#2a2a2a"
+                    }
+
+                    // Grooves: thin concentric rings between the rim and the label.
+                    Repeater {
+                        model: 5
+
+                        Rectangle {
+                            required property int index
+
+                            anchors.centerIn: parent
+                            width: mediaArtwork.discSize - 8 - index * 6
+                            height: width
+                            radius: width / 2
+                            color: "transparent"
+                            border.width: 1
+                            border.color: index % 2 === 0 ? "#1b1b1b" : "#161616"
+                        }
+                    }
+
+                    // Record label: the album art, or the equalizer when there is none.
+                    Rectangle {
+                        id: vinylLabel
+
+                        anchors.centerIn: parent
+                        width: mediaArtwork.labelSize
+                        height: width
+                        radius: width / 2
+                        color: "#1a1a1a"
+                        border.width: 1
+                        border.color: "#303030"
+
+                        Image {
+                            id: mediaCoverSource
+
+                            anchors.fill: parent
+                            source: root.artUrl
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            sourceSize.width: 128
+                            sourceSize.height: 128
+                            visible: false
+                        }
+
+                        OpacityMask {
+                            anchors.fill: parent
+                            source: mediaCoverSource
+                            visible: root.artUrl !== "" && mediaCoverSource.status === Image.Ready
+
+                            maskSource: Rectangle {
+                                width: vinylLabel.width
+                                height: vinylLabel.height
+                                radius: vinylLabel.radius
+                            }
+                        }
+
+                        Row {
+                            id: mediaEqualizer
+
+                            anchors.centerIn: parent
+                            spacing: 2
+                            visible: root.artUrl === "" || mediaCoverSource.status !== Image.Ready
+
+                            Repeater {
+                                model: 3
+
+                                Rectangle {
+                                    required property int index
+
+                                    width: 3
+                                    height: root.playing ? (8 + index * 3) : 7
+                                    radius: 1.5
+                                    color: root.playing ? root.accent : "#4b4b4b"
+
+                                    SequentialAnimation on height {
+                                        running: mediaEqualizer.visible && root.playing && mediaContent.visible
+                                        loops: Animation.Infinite
+
+                                        NumberAnimation {
+                                            to: 6 + index * 3
+                                            duration: 360 + index * 80
+                                            easing.type: Easing.InOutSine
+                                        }
+
+                                        NumberAnimation {
+                                            to: 15 - index * 2
+                                            duration: 420 + index * 80
+                                            easing.type: Easing.InOutSine
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Spindle hole.
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 7
+                        height: 7
+                        radius: 3.5
+                        color: "#050505"
+                        border.width: 1
+                        border.color: "#3a3a3a"
+                    }
+                }
+
+                // Static sheen — lives outside the rotating disc so the highlight
+                // stays put like a real light source while the record turns.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    gradient: Gradient {
+                        orientation: Gradient.Vertical
+                        GradientStop {
+                            position: 0
+                            color: "#14ffffff"
+                        }
+                        GradientStop {
+                            position: 0.55
+                            color: "#00ffffff"
+                        }
+                    }
                 }
             }
 
-            Row {
-                id: mediaEqualizer
+            ColumnLayout {
+                Layout.alignment: Qt.AlignVCenter
+                Layout.fillWidth: true
+                spacing: 2
 
-                anchors.centerIn: parent
-                spacing: 3
-                visible: root.artUrl === "" || mediaCoverSource.status !== Image.Ready
+                HandleStyleSwitch {
+                    handleStyle: root.handleStyle
+                    batteryCharging: root.batteryCharging
+                    batteryLevel: root.batteryLevel
+                    statusText: root.dateText
+                    fontFamily: root.fontFamily
+                    compact: true
+                    showBattery: true
+                    onHandleStyleRequested: style => root.handleStyleRequested(style)
+                    onBatteryRequested: root.batteryRequested()
+                    onSettingsRequested: root.glacierSettingsRequested()
+                }
 
-                Repeater {
-                    model: 3
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.title
+                        color: root.primaryText
+                        elide: Text.ElideRight
+                        font.family: root.fontFamily
+                        font.pixelSize: root.fontPx(16)
+                        font.weight: Font.DemiBold
+                    }
+
+                    Text {
+                        text: root.timeText
+                        color: "#f0f0f0"
+                        visible: root.timeText !== ""
+                        font.family: root.fontFamily
+                        font.pixelSize: root.fontPx(15)
+                        font.weight: Font.Bold
+                    }
 
                     Rectangle {
-                        width: 4
-                        height: root.playing ? (12 + index * 5) : 10
-                        radius: 2
-                        color: root.playing ? root.accent : "#4b4b4b"
+                        Layout.preferredWidth: 20
+                        Layout.preferredHeight: 20
+                        radius: 10
+                        color: dismissMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
+                        border.width: 1
+                        border.color: "#232323"
 
-                        // Same reasoning as the collapsed equalizer: these bars are
-                        // hidden whenever there is cover art to show, so keying off
-                        // the mode alone kept them animating behind the artwork.
-                        SequentialAnimation on height {
-                            running: mediaEqualizer.visible && root.playing
-                            loops: Animation.Infinite
+                        MIcon {
+                            anchors.centerIn: parent
+                            name: "close"
+                            size: 12
+                            color: "#999999"
+                        }
 
-                            NumberAnimation {
-                                to: 10 + index * 4
-                                duration: 360 + index * 80
-                                easing.type: Easing.InOutSine
+                        MouseArea {
+                            id: dismissMouse
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.dismissRequested()
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: root.artist
+                    color: root.secondaryText
+                    elide: Text.ElideRight
+                    font.family: root.fontFamily
+                    font.pixelSize: root.fontPx(13)
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 7
+                    visible: root.mediaLength > 0
+
+                    Text {
+                        text: root.formatTime(root.mediaPosition)
+                        color: "#6d6d6d"
+                        font.family: root.fontFamily
+                        font.pixelSize: root.fontPx(10)
+                        font.weight: Font.DemiBold
+                    }
+
+                    Rectangle {
+                        id: mediaProgressTrack
+
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 3
+                        radius: height / 2
+                        color: "#151515"
+
+                        Rectangle {
+                            width: parent.width * root.mediaProgress
+                            height: parent.height
+                            radius: parent.radius
+                            color: "#d8d8d8"
+
+                            Behavior on width {
+                                NumberAnimation {
+                                    duration: 260
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -5
+                            enabled: root.canSeek
+                            hoverEnabled: true
+                            cursorShape: root.canSeek ? Qt.PointingHandCursor : Qt.ArrowCursor
+
+                            function seekToX(x) {
+                                const progress = Math.max(0, Math.min(1, x / Math.max(1, mediaProgressTrack.width)));
+                                root.seekRequested(root.mediaLength * progress);
                             }
 
-                            NumberAnimation {
-                                to: 23 - index * 3
-                                duration: 420 + index * 80
-                                easing.type: Easing.InOutSine
+                            onPressed: event => seekToX(event.x)
+                            onPositionChanged: event => {
+                                if (pressed)
+                                    seekToX(event.x);
                             }
+                        }
+                    }
+
+                    Text {
+                        text: root.formatTime(root.mediaLength)
+                        color: "#6d6d6d"
+                        font.family: root.fontFamily
+                        font.pixelSize: root.fontPx(10)
+                        font.weight: Font.DemiBold
+                    }
+                }
+
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 1
+                    spacing: 7
+
+                    Rectangle {
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 10
+                        color: shuffleMouse.containsMouse && root.shuffleSupported ? "#151515" : (root.shuffleActive ? "#202020" : "#090909")
+                        border.width: 1
+                        border.color: root.shuffleActive ? "#f0f0f0" : (root.shuffleSupported ? "#232323" : "#111111")
+                        opacity: root.shuffleSupported ? 1 : 0.35
+
+                        MIcon {
+                            anchors.centerIn: parent
+                            name: "shuffle"
+                            size: 14
+                            color: root.shuffleActive ? "#ffffff" : root.primaryText
+                        }
+
+                        MouseArea {
+                            id: shuffleMouse
+
+                            anchors.fill: parent
+                            enabled: root.shuffleSupported
+                            hoverEnabled: true
+                            cursorShape: root.shuffleSupported ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: root.shuffleRequested()
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 10
+                        color: previousMouse.containsMouse && root.canGoPrevious ? "#151515" : "#090909"
+                        border.width: 1
+                        border.color: root.canGoPrevious ? "#232323" : "#111111"
+                        opacity: root.canGoPrevious ? 1 : 0.35
+
+                        MIcon {
+                            anchors.centerIn: parent
+                            name: "skip_previous"
+                            size: 16
+                            color: root.primaryText
+                        }
+
+                        MouseArea {
+                            id: previousMouse
+
+                            anchors.fill: parent
+                            enabled: root.canGoPrevious
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.previousRequested()
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        radius: 12
+                        color: playPauseMouse.containsMouse && root.canTogglePlaying ? "#191919" : "#0b0b0b"
+                        border.width: 1
+                        border.color: root.canTogglePlaying ? "#2b2b2b" : "#111111"
+                        opacity: root.canTogglePlaying ? 1 : 0.35
+
+                        MIcon {
+                            anchors.centerIn: parent
+                            name: root.playing ? "pause" : "play_arrow"
+                            size: 18
+                            color: root.primaryText
+                            filled: true
+                        }
+
+                        MouseArea {
+                            id: playPauseMouse
+
+                            anchors.fill: parent
+                            enabled: root.canTogglePlaying
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.playPauseRequested()
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 10
+                        color: nextMouse.containsMouse && root.canGoNext ? "#151515" : "#090909"
+                        border.width: 1
+                        border.color: root.canGoNext ? "#232323" : "#111111"
+                        opacity: root.canGoNext ? 1 : 0.35
+
+                        MIcon {
+                            anchors.centerIn: parent
+                            name: "skip_next"
+                            size: 16
+                            color: root.primaryText
+                        }
+
+                        MouseArea {
+                            id: nextMouse
+
+                            anchors.fill: parent
+                            enabled: root.canGoNext
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.nextRequested()
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 10
+                        color: loopMouse.containsMouse && root.loopSupported ? "#151515" : (root.loopActive ? "#202020" : "#090909")
+                        border.width: 1
+                        border.color: root.loopActive ? "#f0f0f0" : (root.loopSupported ? "#232323" : "#111111")
+                        opacity: root.loopSupported ? 1 : 0.35
+
+                        MIcon {
+                            anchors.centerIn: parent
+                            name: root.loopStateText === "ONE" ? "repeat_one" : "repeat"
+                            size: 14
+                            color: root.loopActive ? "#ffffff" : root.primaryText
+                        }
+
+                        MouseArea {
+                            id: loopMouse
+
+                            anchors.fill: parent
+                            enabled: root.loopSupported
+                            hoverEnabled: true
+                            cursorShape: root.loopSupported ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: root.loopRequested()
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        radius: 10
+                        color: favoriteMouse.containsMouse ? "#151515" : "#090909"
+                        border.width: 1
+                        border.color: "#232323"
+
+                        MIcon {
+                            anchors.centerIn: parent
+                            name: "favorite"
+                            size: 14
+                            color: root.primaryText
+                            filled: false
+                        }
+
+                        MouseArea {
+                            id: favoriteMouse
+
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.favoriteRequested()
                         }
                     }
                 }
             }
         }
 
-        ColumnLayout {
-            Layout.alignment: Qt.AlignVCenter
-            Layout.fillWidth: true
-            spacing: 2
+        // Synced lyrics: a three-line window (previous / current / next)
+        // centred across the full card width, below the track block. Only
+        // exists when LRCLIB had synced lyrics for this track — the card
+        // grows to make room and is exactly the plain card otherwise.
+        //
+        // Every line is its own item that glides between three slots as the
+        // song advances: the current line grows and brightens in the middle,
+        // the one before shrinks and dims into the top slot, the one after
+        // rises from the bottom. Any line can be clicked to seek to it.
+        Item {
+            id: lyricsWindow
 
-            HandleStyleSwitch {
-                handleStyle: root.handleStyle
-                batteryCharging: root.batteryCharging
-                batteryLevel: root.batteryLevel
-                statusText: root.dateText
-                fontFamily: root.fontFamily
-                compact: true
-                showBattery: true
-                onHandleStyleRequested: style => root.handleStyleRequested(style)
-                onBatteryRequested: root.batteryRequested()
-                onSettingsRequested: root.glacierSettingsRequested()
+            readonly property bool active: root.lyricsLines.length > 0
+            // Slot geometry, top to bottom: side line, current (two-line box),
+            // side line. Off-screen slots one step beyond each end give lines
+            // somewhere to slide in from and out to.
+            readonly property int sideHeight: 20
+            readonly property int currentHeight: 48
+            readonly property int slotGap: 2
+            readonly property int currentY: sideHeight + slotGap
+            // Index range is checked because on a track change the lines can
+            // be swapped out before the index is recomputed against them.
+            readonly property bool currentLineBlank: root.lyricsIndex < 0 || root.lyricsIndex >= root.lyricsLines.length || root.lyricsLines[root.lyricsIndex].text === ""
+
+            function slotY(offset) {
+                if (offset <= -2)
+                    return -(sideHeight + slotGap);
+                if (offset === -1)
+                    return 0;
+                if (offset === 0)
+                    return currentY;
+                if (offset === 1)
+                    return currentY + currentHeight + slotGap;
+                return currentY + currentHeight + slotGap + sideHeight + slotGap;
             }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
+            Layout.fillWidth: true
+            Layout.preferredHeight: active ? sideHeight + slotGap + currentHeight + slotGap + sideHeight : 0
+            Layout.bottomMargin: active ? 12 : 0
+            visible: active
+            clip: true
 
-                Text {
-                    Layout.fillWidth: true
-                    text: root.title
-                    color: root.primaryText
-                    elide: Text.ElideRight
-                    font.family: root.fontFamily
-                    font.pixelSize: root.fontPx(16)
-                    font.weight: Font.DemiBold
-                }
+            Repeater {
+                model: root.lyricsLines.length
 
-                Text {
-                    text: root.timeText
-                    color: "#f0f0f0"
-                    visible: root.timeText !== ""
-                    font.family: root.fontFamily
-                    font.pixelSize: root.fontPx(15)
-                    font.weight: Font.Bold
-                }
+                Item {
+                    id: lyricLine
 
-                Rectangle {
-                    Layout.preferredWidth: 20
-                    Layout.preferredHeight: 20
-                    radius: 10
-                    color: dismissMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
-                    border.width: 1
-                    border.color: "#232323"
+                    required property int index
+                    readonly property int offset: index - root.lyricsIndex
+                    readonly property bool current: offset === 0
+                    // Guarded: on a track change the array can shrink before
+                    // the Repeater drops the surplus items.
+                    readonly property string lineText: index < root.lyricsLines.length ? root.lyricsLines[index].text : ""
+                    // 0 = laid out as a side line, 1 = as the current line.
+                    // The two layouts below are fixed and cross-faded along
+                    // this, so a long line never re-wraps or re-elides while
+                    // it is moving — that mid-animation reflow is what made
+                    // long lines jump.
+                    property real emphasis: current ? 1 : 0
+                    // Cross-fade between the two layouts in the first half
+                    // of the move, whichever way it goes, so the wrapped
+                    // layout is what grows and the one-liner never has to
+                    // scale past the window edges.
+                    readonly property real handover: current ? Math.min(1, emphasis / 0.5) : Math.max(0, (emphasis - 0.5) / 0.5)
 
-                    MIcon {
+                    width: lyricsWindow.width
+                    height: current ? lyricsWindow.currentHeight : lyricsWindow.sideHeight
+                    y: lyricsWindow.slotY(offset)
+                    opacity: current ? 1 : (Math.abs(offset) === 1 ? 0.55 : 0)
+                    // Lines further out sit parked in the off-screen slots, so
+                    // nothing changes (or animates) for them until they come
+                    // within reach of the window.
+                    visible: Math.abs(offset) <= 2
+
+                    Behavior on y {
+                        NumberAnimation {
+                            duration: 380
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Behavior on height {
+                        NumberAnimation {
+                            duration: 380
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: 380
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    Behavior on emphasis {
+                        NumberAnimation {
+                            duration: 380
+                            easing.type: Easing.OutCubic
+                        }
+                    }
+
+                    // Side layout: one line, elided, at its own size.
+                    Text {
                         anchors.centerIn: parent
-                        name: "close"
-                        size: 12
-                        color: "#999999"
+                        width: parent.width
+                        text: lyricLine.lineText
+                        horizontalAlignment: Text.AlignHCenter
+                        color: root.secondaryText
+                        elide: Text.ElideRight
+                        font.family: root.fontFamily
+                        font.pixelSize: 14
+                        opacity: 1 - lyricLine.handover
+                        visible: opacity > 0
+                    }
+
+                    // Current layout: up to two wrapped lines in a box of
+                    // constant height, so the wrap is settled before it is
+                    // ever shown. Scales between the side and current sizes.
+                    Text {
+                        anchors.centerIn: parent
+                        width: parent.width
+                        height: lyricsWindow.currentHeight
+                        text: lyricLine.lineText
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        color: root.primaryText
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                        font.family: root.fontFamily
+                        font.pixelSize: 20
+                        font.weight: Font.DemiBold
+                        opacity: lyricLine.handover
+                        scale: 14 / 20 + lyricLine.emphasis * (1 - 14 / 20)
+                        visible: opacity > 0
                     }
 
                     MouseArea {
-                        id: dismissMouse
-
                         anchors.fill: parent
-                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: root.dismissRequested()
+                        onClicked: {
+                            if (lyricLine.index < root.lyricsLines.length)
+                                root.seekRequested(root.lyricsLines[lyricLine.index].time);
+                        }
                     }
                 }
             }
 
-            Text {
-                Layout.fillWidth: true
-                text: root.artist
-                color: root.secondaryText
-                elide: Text.ElideRight
-                font.family: root.fontFamily
-                font.pixelSize: root.fontPx(13)
-            }
+            // Pulsing dots in the current slot while there is nothing to
+            // sing: the intro before the first line, and instrumental gaps
+            // the LRC marks with an empty line.
+            Row {
+                id: lyricsDots
 
-            RowLayout {
-                Layout.fillWidth: true
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: lyricsWindow.currentY + (lyricsWindow.currentHeight - height) / 2
                 spacing: 7
-                visible: root.mediaLength > 0
+                opacity: lyricsWindow.currentLineBlank ? 1 : 0
+                visible: opacity > 0
 
-                Text {
-                    text: root.formatTime(root.mediaPosition)
-                    color: "#6d6d6d"
-                    font.family: root.fontFamily
-                    font.pixelSize: root.fontPx(10)
-                    font.weight: Font.DemiBold
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: 300
+                    }
                 }
 
-                Rectangle {
-                    id: mediaProgressTrack
-
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 3
-                    radius: height / 2
-                    color: "#151515"
+                Repeater {
+                    model: 3
 
                     Rectangle {
-                        width: parent.width * root.mediaProgress
-                        height: parent.height
-                        radius: parent.radius
-                        color: "#d8d8d8"
+                        id: lyricsDot
 
-                        Behavior on width {
+                        required property int index
+
+                        width: 7
+                        height: 7
+                        radius: 3.5
+                        color: root.primaryText
+                        opacity: 0.3
+
+                        SequentialAnimation {
+                            running: mediaContent.visible && lyricsDots.visible
+                            loops: Animation.Infinite
+
+                            PauseAnimation {
+                                duration: lyricsDot.index * 200
+                            }
                             NumberAnimation {
-                                duration: 260
-                                easing.type: Easing.OutCubic
+                                target: lyricsDot
+                                property: "opacity"
+                                to: 1
+                                duration: 400
+                                easing.type: Easing.InOutSine
+                            }
+                            NumberAnimation {
+                                target: lyricsDot
+                                property: "opacity"
+                                to: 0.3
+                                duration: 400
+                                easing.type: Easing.InOutSine
+                            }
+                            PauseAnimation {
+                                duration: (2 - lyricsDot.index) * 200 + 300
                             }
                         }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.margins: -5
-                        enabled: root.canSeek
-                        hoverEnabled: true
-                        cursorShape: root.canSeek ? Qt.PointingHandCursor : Qt.ArrowCursor
-
-                        function seekToX(x) {
-                            const progress = Math.max(0, Math.min(1, x / Math.max(1, mediaProgressTrack.width)));
-                            root.seekRequested(root.mediaLength * progress);
-                        }
-
-                        onPressed: event => seekToX(event.x)
-                        onPositionChanged: event => {
-                            if (pressed)
-                                seekToX(event.x);
-                        }
-                    }
-                }
-
-                Text {
-                    text: root.formatTime(root.mediaLength)
-                    color: "#6d6d6d"
-                    font.family: root.fontFamily
-                    font.pixelSize: root.fontPx(10)
-                    font.weight: Font.DemiBold
-                }
-            }
-
-            RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                Layout.topMargin: 1
-                spacing: 7
-
-                Rectangle {
-                    Layout.preferredWidth: 24
-                    Layout.preferredHeight: 24
-                    radius: 10
-                    color: shuffleMouse.containsMouse && root.shuffleSupported ? "#151515" : (root.shuffleActive ? "#202020" : "#090909")
-                    border.width: 1
-                    border.color: root.shuffleActive ? "#f0f0f0" : (root.shuffleSupported ? "#232323" : "#111111")
-                    opacity: root.shuffleSupported ? 1 : 0.35
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: "shuffle"
-                        size: 14
-                        color: root.shuffleActive ? "#ffffff" : root.primaryText
-                    }
-
-                    MouseArea {
-                        id: shuffleMouse
-
-                        anchors.fill: parent
-                        enabled: root.shuffleSupported
-                        hoverEnabled: true
-                        cursorShape: root.shuffleSupported ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: root.shuffleRequested()
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 24
-                    Layout.preferredHeight: 24
-                    radius: 10
-                    color: previousMouse.containsMouse && root.canGoPrevious ? "#151515" : "#090909"
-                    border.width: 1
-                    border.color: root.canGoPrevious ? "#232323" : "#111111"
-                    opacity: root.canGoPrevious ? 1 : 0.35
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: "skip_previous"
-                        size: 16
-                        color: root.primaryText
-                    }
-
-                    MouseArea {
-                        id: previousMouse
-
-                        anchors.fill: parent
-                        enabled: root.canGoPrevious
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.previousRequested()
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 28
-                    Layout.preferredHeight: 28
-                    radius: 12
-                    color: playPauseMouse.containsMouse && root.canTogglePlaying ? "#191919" : "#0b0b0b"
-                    border.width: 1
-                    border.color: root.canTogglePlaying ? "#2b2b2b" : "#111111"
-                    opacity: root.canTogglePlaying ? 1 : 0.35
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: root.playing ? "pause" : "play_arrow"
-                        size: 18
-                        color: root.primaryText
-                        filled: true
-                    }
-
-                    MouseArea {
-                        id: playPauseMouse
-
-                        anchors.fill: parent
-                        enabled: root.canTogglePlaying
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.playPauseRequested()
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 24
-                    Layout.preferredHeight: 24
-                    radius: 10
-                    color: nextMouse.containsMouse && root.canGoNext ? "#151515" : "#090909"
-                    border.width: 1
-                    border.color: root.canGoNext ? "#232323" : "#111111"
-                    opacity: root.canGoNext ? 1 : 0.35
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: "skip_next"
-                        size: 16
-                        color: root.primaryText
-                    }
-
-                    MouseArea {
-                        id: nextMouse
-
-                        anchors.fill: parent
-                        enabled: root.canGoNext
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.nextRequested()
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 24
-                    Layout.preferredHeight: 24
-                    radius: 10
-                    color: loopMouse.containsMouse && root.loopSupported ? "#151515" : (root.loopActive ? "#202020" : "#090909")
-                    border.width: 1
-                    border.color: root.loopActive ? "#f0f0f0" : (root.loopSupported ? "#232323" : "#111111")
-                    opacity: root.loopSupported ? 1 : 0.35
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: root.loopStateText === "ONE" ? "repeat_one" : "repeat"
-                        size: 14
-                        color: root.loopActive ? "#ffffff" : root.primaryText
-                    }
-
-                    MouseArea {
-                        id: loopMouse
-
-                        anchors.fill: parent
-                        enabled: root.loopSupported
-                        hoverEnabled: true
-                        cursorShape: root.loopSupported ? Qt.PointingHandCursor : Qt.ArrowCursor
-                        onClicked: root.loopRequested()
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 24
-                    Layout.preferredHeight: 24
-                    radius: 10
-                    color: favoriteMouse.containsMouse ? "#151515" : "#090909"
-                    border.width: 1
-                    border.color: "#232323"
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: "favorite"
-                        size: 14
-                        color: root.primaryText
-                        filled: false
-                    }
-
-                    MouseArea {
-                        id: favoriteMouse
-
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.favoriteRequested()
                     }
                 }
             }

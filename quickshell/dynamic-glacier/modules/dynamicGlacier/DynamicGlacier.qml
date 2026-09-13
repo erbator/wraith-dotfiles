@@ -60,7 +60,6 @@ Scope {
     property bool demoRunning: false
     property bool pointerInside: false
     property bool pinnedOpen: false
-    property bool mediaHoverSuppressed: false
     property bool liveLinksEnabled: true
     property bool liveLinksPrimed: false
     property bool privacyDebugEnabled: false
@@ -80,6 +79,60 @@ Scope {
     property bool visualSettingsLoaded: false
     property var activePlayer: null
     property string lastTrackKey: ""
+
+    // Synced lyrics (LRCLIB via lyrics-fetch.sh) for the current track.
+    // lyricsLines: [{time: seconds, text}] sorted by time; empty when none.
+    property string lyricsTrackKey: ""
+    property var lyricsLines: []
+    readonly property bool hasSyncedLyrics: root.lyricsLines.length > 0
+    // Index of the line whose timestamp has passed, -1 before the first.
+    //
+    // Kept by hand instead of as a pure binding on the position: players
+    // re-report their position a little behind the interpolated estimate
+    // after a resume or seek (Spotify by about a second), which would flick
+    // the lyrics back to the previous line and forward again. So the index
+    // only moves backwards for a real seek, not a correction smaller than
+    // lyricsBacktrackTolerance.
+    property int lyricsIndex: -1
+    readonly property real lyricsBacktrackTolerance: 2
+
+    // Deferred so the two position updates a seek produces back to back
+    // (the first computed against a stale timestamp, so it can be off by
+    // however long since the last resync) collapse into one, using the
+    // final value.
+    onMediaPositionChanged: Qt.callLater(root.updateLyricsIndex)
+    onLyricsLinesChanged: {
+        root.lyricsIndex = -1;
+        root.updateLyricsIndex();
+    }
+
+    function positionSeconds(position) {
+        return position > 86400 ? position / 1000000 : position;
+    }
+
+    function lyricsIndexAt(seconds) {
+        let index = -1;
+
+        for (let i = 0; i < root.lyricsLines.length; i++) {
+            if (root.lyricsLines[i].time <= seconds)
+                index = i;
+            else
+                break;
+        }
+
+        return index;
+    }
+
+    function updateLyricsIndex() {
+        const seconds = root.positionSeconds(root.mediaPosition);
+        const index = root.lyricsIndexAt(seconds);
+
+        if (index < root.lyricsIndex && root.lyricsIndex < root.lyricsLines.length && seconds > root.lyricsLines[root.lyricsIndex].time - root.lyricsBacktrackTolerance)
+            return;
+
+        root.lyricsIndex = index;
+    }
+
     property real lastSinkVolume: -1
     property bool lastSinkMuted: false
     property int lastBatteryLevel: -1
@@ -91,11 +144,15 @@ Scope {
 
     readonly property bool interactionOpen: root.mode === "idle" && (root.pointerInside || root.pinnedOpen || root.exitPreviewActive)
     readonly property bool trayVisible: root.handleStyle === "bump" && !root.interactionOpen && root.visualMode === "idle"
-    readonly property bool hoverMediaMode: root.liveLinksEnabled && root.mode === "idle" && root.interactionOpen && !root.exitPreviewActive && !root.mediaHoverSuppressed && root.hasActiveMedia()
+    // The now-playing card is only ever shown deliberately: it takes the
+    // place of the idle peek while the island is pinned open (a click on
+    // it, or the toggleOpen keybind) and something is playing. Hovering
+    // alone never brings it up, and the card's close button unpins.
+    readonly property bool pinnedMediaMode: root.liveLinksEnabled && root.mode === "idle" && root.pinnedOpen && !root.exitPreviewActive && root.hasActiveMedia()
     // The volume HUD is a transient morph, so it only takes over the idle shape —
     // a notification, the media card or an open panel all outrank it.
     readonly property bool volumeHudMode: root.volumeIndicatorVisible && root.mode === "idle"
-    readonly property string visualMode: root.volumeHudMode ? "volume" : (root.hoverMediaMode ? "media" : root.mode)
+    readonly property string visualMode: root.volumeHudMode ? "volume" : (root.pinnedMediaMode ? "media" : root.mode)
     readonly property int idleTopMargin: 0
     readonly property int expandedTopMargin: 0
     readonly property int reservedZone: root.handleStyle === "strip" ? 0 : 24
@@ -108,8 +165,8 @@ Scope {
     readonly property int notifyHeight: 74
     readonly property int screenshotWidth: 220
     readonly property int screenshotHeight: 140
-    readonly property int mediaWidth: 380
-    readonly property int mediaHeight: 132
+    readonly property int mediaWidth: 400
+    readonly property int mediaHeight: root.hasSyncedLyrics ? 236 : 132
     readonly property int volumeWidth: 244
     readonly property int volumeHeight: 48
     readonly property int wifiWidth: 500
@@ -724,6 +781,72 @@ Scope {
         root.artist = root.trackArtist(player);
         root.artUrl = root.trackArtUrl(player);
         root.playing = player.isPlaying;
+        root.refreshLyricsForPlayer(player);
+    }
+
+    function lyricsKeyFor(player) {
+        if (!player)
+            return "";
+
+        return [root.trackTitle(player), root.trackArtist(player), player.trackAlbum || "", Math.round(player.length || 0)].join("|");
+    }
+
+    // Fetches lyrics once per track (the key ignores play/pause, unlike
+    // trackKey) — safe to call from the periodic sync, it no-ops otherwise.
+    function refreshLyricsForPlayer(player) {
+        const key = root.lyricsKeyFor(player);
+
+        if (key === root.lyricsTrackKey)
+            return;
+
+        root.lyricsTrackKey = key;
+        root.lyricsLines = [];
+
+        if (!player || root.trackTitle(player) === "Unknown track")
+            return;
+
+        lyricsFetchProc.running = false;
+        lyricsFetchProc.requestKey = key;
+        lyricsFetchProc.command = [Quickshell.env("HOME") + "/.config/hypr/scripts/lyrics-fetch.sh", root.trackTitle(player), root.trackArtist(player), player.trackAlbum || "", String(Math.round(player.length || 0))];
+        lyricsFetchProc.running = true;
+    }
+
+    function applyLyricsText(requestKey, text) {
+        // A slow response for a track that has since changed must not
+        // overwrite the current one.
+        if (requestKey !== root.lyricsTrackKey)
+            return;
+
+        root.lyricsLines = root.parseLrc(text);
+    }
+
+    // "[mm:ss.xx]text" lines, possibly several timestamps per line.
+    function parseLrc(text) {
+        const lines = [];
+        const tag = /\[(\d+):(\d+(?:\.\d+)?)\]/g;
+
+        for (const raw of (text || "").split("\n")) {
+            let match;
+            let lastEnd = 0;
+            const times = [];
+
+            tag.lastIndex = 0;
+            while ((match = tag.exec(raw)) !== null && match.index === lastEnd) {
+                times.push(Number(match[1]) * 60 + Number(match[2]));
+                lastEnd = tag.lastIndex;
+            }
+
+            if (times.length === 0)
+                continue;
+
+            const content = raw.slice(lastEnd).trim();
+
+            for (const time of times)
+                lines.push({ time: time, text: content });
+        }
+
+        lines.sort((a, b) => a.time - b.time);
+        return lines;
     }
 
     function hasActiveMedia() {
@@ -826,7 +949,7 @@ Scope {
         if (!player || !key)
             return;
 
-        const keepMediaFieldsFresh = root.mode === "idle" || root.hoverMediaMode;
+        const keepMediaFieldsFresh = root.mode === "idle" || root.pinnedMediaMode;
 
         if (keepMediaFieldsFresh)
             root.syncMediaFields(player);
@@ -851,6 +974,9 @@ Scope {
             return;
 
         player.position = Math.max(0, Math.min(root.mediaLength, Number(position)));
+        // An explicit seek is the one backwards move the lyrics must follow
+        // right away, whatever the player reports over the next second.
+        root.lyricsIndex = root.lyricsIndexAt(root.positionSeconds(player.position));
     }
 
     function sinkVolumePercent() {
@@ -2164,7 +2290,8 @@ Scope {
     }
 
     Timer {
-        interval: 1000
+        // Synced lyrics need finer position updates than the progress bar.
+        interval: root.hasSyncedLyrics ? 250 : 1000
         repeat: true
         running: root.visualMode === "media" && root.activePlayer !== null
         onTriggered: {
@@ -2549,6 +2676,16 @@ Scope {
     }
 
     Process {
+        id: lyricsFetchProc
+
+        property string requestKey: ""
+
+        stdout: StdioCollector {
+            onStreamFinished: root.applyLyricsText(lyricsFetchProc.requestKey, text)
+        }
+    }
+
+    Process {
         id: wallpaperScanProc
 
         stdout: StdioCollector {
@@ -2788,6 +2925,8 @@ Scope {
                 loopSupported: root.mediaLoopSupported
                 mediaPosition: root.mediaPosition
                 mediaLength: root.mediaLength
+                lyricsLines: root.lyricsLines
+                lyricsIndex: root.lyricsIndex
                 mediaAvailable: root.mediaAvailable
                 fontFamily: root.fontFamily
                 fontOptions: root.fontOptions
@@ -2861,10 +3000,7 @@ Scope {
                 onShuffleRequested: root.mediaToggleShuffle()
                 onLoopRequested: root.mediaCycleLoop()
                 onFavoriteRequested: root.mediaToggleFavorite()
-                onDismissRequested: {
-                    root.mediaHoverSuppressed = true;
-                    root.showIdle();
-                }
+                onDismissRequested: root.showIdle()
                 onWifiSettingsRequested: root.toggleWifiPanel()
                 onWifiCloseRequested: root.closePanelToWideIdle(root.wifiWidth)
                 onWifiToggleRadioRequested: root.toggleWifiRadio()
@@ -3090,10 +3226,7 @@ Scope {
                 cursorShape: Qt.PointingHandCursor
                 onEntered: root.keepInteractionOpen(true)
                 onPositionChanged: mouse => root.maybeFinishExitPreview(mouse.x, width)
-                onExited: {
-                    root.mediaHoverSuppressed = false;
-                    root.scheduleInteractionClose();
-                }
+                onExited: root.scheduleInteractionClose()
                 onClicked: {
                     if (root.mode === "idle")
                         root.pinnedOpen = !root.pinnedOpen;

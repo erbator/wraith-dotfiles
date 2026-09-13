@@ -26,6 +26,8 @@ Item {
     property bool loopActive: false
     property bool loopSupported: false
     property real mediaPosition: 0
+    property var lyricsLines: []
+    property int lyricsIndex: -1
     property real mediaLength: 0
     property bool forceExpanded: false
     property bool mediaAvailable: false
@@ -486,6 +488,8 @@ Item {
             loopSupported: root.loopSupported
             mediaPosition: root.mediaPosition
             mediaLength: root.mediaLength
+            lyricsLines: root.lyricsLines
+            lyricsIndex: root.lyricsIndex
             mediaAvailable: root.mediaAvailable
             fontFamily: root.fontFamily
             fontOptions: root.fontOptions
