@@ -72,6 +72,12 @@ Scope {
     property date currentDateTime: new Date()
     property string handleStyle: "bump"
     property bool liquidGlassEnabled: false
+    // Compositor looks owned by the settings panel and pushed to Hyprland
+    // through set-compositor.sh, which both applies them live and writes
+    // them into a config file so they survive a reload.
+    property bool windowGlassEnabled: true
+    property bool edgeToEdge: false
+    property int windowOpacity: 65
     property int peekWidth: 340
     property int peekHeight: 132
     property bool exitPreviewActive: false
@@ -155,7 +161,11 @@ Scope {
     readonly property string visualMode: root.volumeHudMode ? "volume" : (root.pinnedMediaMode ? "media" : root.mode)
     readonly property int idleTopMargin: 0
     readonly property int expandedTopMargin: 0
-    readonly property int reservedZone: root.handleStyle === "strip" ? 0 : 24
+    // Edge to edge means windows own every pixel, so the island stops
+    // reserving a strip for itself and floats over them instead — it is on
+    // the Top layer, so it still draws above. Otherwise the bump handle
+    // keeps its own sliver of space.
+    readonly property int reservedZone: root.edgeToEdge || root.handleStyle === "strip" ? 0 : 24
     readonly property int windowHeight: 136
     readonly property int bumpWidth: 104
     readonly property int bumpHeight: 24
@@ -641,6 +651,37 @@ Scope {
         root.saveVisualSettings();
     }
 
+    function setWindowGlassEnabled(enabled) {
+        root.windowGlassEnabled = enabled === true;
+        root.saveVisualSettings();
+        root.applyCompositorSettings();
+    }
+
+    function setEdgeToEdge(enabled) {
+        root.edgeToEdge = enabled === true;
+        root.saveVisualSettings();
+        root.applyCompositorSettings();
+    }
+
+    function setWindowOpacity(opacity) {
+        const numericOpacity = Number(opacity);
+
+        if (!isFinite(numericOpacity))
+            return;
+
+        root.windowOpacity = Math.max(30, Math.min(100, Math.round(numericOpacity / 5) * 5));
+        root.saveVisualSettings();
+        root.applyCompositorSettings();
+    }
+
+    function applyCompositorSettings() {
+        // running=false first: a second toggle while the first is still in
+        // flight would otherwise be a no-op property write.
+        compositorProcess.running = false;
+        compositorProcess.command = [Quickshell.env("HOME") + "/.config/hypr/scripts/set-compositor.sh", root.windowGlassEnabled ? "1" : "0", String(root.windowOpacity), root.edgeToEdge ? "1" : "0"];
+        compositorProcess.running = true;
+    }
+
     function setFontFamily(family) {
         if (root.fontOptions.indexOf(family) === -1)
             return;
@@ -669,10 +710,14 @@ Scope {
 
     function resetVisualSettings() {
         root.liquidGlassEnabled = false;
+        root.windowGlassEnabled = true;
+        root.windowOpacity = 65;
+        root.edgeToEdge = false;
         root.peekWidth = 340;
         root.peekHeight = 132;
         root.fontFamily = root.fontOptions[1];
         root.saveVisualSettings();
+        root.applyCompositorSettings();
     }
 
     // Shows a brief thumbnail of a just-taken screenshot, auto-dismissing
@@ -2218,6 +2263,9 @@ Scope {
 
             root.handleStyle = parsed.handleStyle === "strip" ? "strip" : "bump";
             root.liquidGlassEnabled = parsed.liquidGlassEnabled === true;
+            root.windowGlassEnabled = parsed.windowGlassEnabled !== false;
+            root.edgeToEdge = parsed.edgeToEdge === true;
+            root.windowOpacity = Math.max(30, Math.min(100, Math.round((Number(parsed.windowOpacity) || 65) / 5) * 5));
             root.peekWidth = Math.max(300, Math.min(520, Math.round((Number(parsed.idleWidth) || 340) / 10) * 10));
             root.peekHeight = Math.max(112, Math.min(180, Math.round((Number(parsed.idleHeight) || 132) / 4) * 4));
 
@@ -2229,6 +2277,11 @@ Scope {
         }
 
         root.visualSettingsLoaded = true;
+
+        // Hyprland keeps its own copy of these in compositor.lua, and the
+        // two can drift (the file hand-edited, or the shell's settings
+        // restored from a backup). The saved value wins, so push it once.
+        root.applyCompositorSettings();
     }
 
     function saveVisualSettings() {
@@ -2238,6 +2291,9 @@ Scope {
         visualSettingsFile.setText(JSON.stringify({
             handleStyle: root.handleStyle,
             liquidGlassEnabled: root.liquidGlassEnabled,
+            windowGlassEnabled: root.windowGlassEnabled,
+            edgeToEdge: root.edgeToEdge,
+            windowOpacity: root.windowOpacity,
             idleWidth: root.peekWidth,
             idleHeight: root.peekHeight,
             fontFamily: root.fontFamily
@@ -2246,6 +2302,10 @@ Scope {
 
     function saveFavorites() {
         favoritesFile.setText(JSON.stringify(root.favoriteAppIds));
+    }
+
+    Process {
+        id: compositorProcess
     }
 
     Timer {
@@ -2834,7 +2894,11 @@ Scope {
         screen: root.focusedScreen()
         color: "transparent"
         exclusiveZone: root.reservedZone
-        exclusionMode: ExclusionMode.Normal
+        // Switching the mode along with the zone, rather than leaving it on
+        // Normal: the zone is latched when the layer surface is first
+        // committed (before the saved settings have loaded), and changing
+        // the number alone never reaches the compositor afterwards.
+        exclusionMode: root.reservedZone > 0 ? ExclusionMode.Normal : ExclusionMode.Ignore
         // Tall enough for the tallest expanded panel so the morph never clips.
         // The surface is transparent and input is limited to `mask`, so the extra
         // room costs nothing.
@@ -2901,6 +2965,9 @@ Scope {
                 mode: root.visualMode
                 handleStyle: root.handleStyle
                 liquidGlassEnabled: root.liquidGlassEnabled
+                windowGlassEnabled: root.windowGlassEnabled
+                edgeToEdge: root.edgeToEdge
+                windowOpacity: root.windowOpacity
                 idleWidth: root.peekWidth
                 idleHeight: root.peekHeight
                 forceExpanded: root.interactionOpen
@@ -3020,6 +3087,9 @@ Scope {
                 onGlacierSettingsRequested: root.toggleSettingsPanel()
                 onSettingsCloseRequested: root.closePanelToWideIdle(root.settingsWidth)
                 onLiquidGlassRequested: enabled => root.setLiquidGlassEnabled(enabled)
+                onWindowGlassRequested: enabled => root.setWindowGlassEnabled(enabled)
+                onEdgeToEdgeRequested: enabled => root.setEdgeToEdge(enabled)
+                onWindowOpacityRequested: opacity => root.setWindowOpacity(opacity)
                 onFontFamilyRequested: family => root.setFontFamily(family)
                 onIdleWidthRequested: width => root.setIdleWidth(width)
                 onIdleHeightRequested: height => root.setIdleHeight(height)

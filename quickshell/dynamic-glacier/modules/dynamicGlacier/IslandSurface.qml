@@ -33,6 +33,9 @@ Item {
     property bool mediaAvailable: false
     property string handleStyle: "bump"
     property bool liquidGlassEnabled: false
+    property bool windowGlassEnabled: true
+    property bool edgeToEdge: false
+    property int windowOpacity: 65
     property int idleWidth: 340
     property int idleHeight: 132
     property string batteryHoverText: ""
@@ -206,6 +209,9 @@ Item {
     signal glacierSettingsRequested
     signal settingsCloseRequested
     signal liquidGlassRequested(bool enabled)
+    signal windowGlassRequested(bool enabled)
+    signal edgeToEdgeRequested(bool enabled)
+    signal windowOpacityRequested(int opacity)
     signal fontFamilyRequested(string family)
     signal idleWidthRequested(int width)
     signal idleHeightRequested(int height)
@@ -465,6 +471,9 @@ Item {
             mode: root.mode
             handleStyle: root.handleStyle
             liquidGlassEnabled: root.liquidGlassEnabled
+            windowGlassEnabled: root.windowGlassEnabled
+            edgeToEdge: root.edgeToEdge
+            windowOpacity: root.windowOpacity
             idleWidth: root.idleWidth
             idleHeight: root.idleHeight
             forceExpanded: root.forceExpanded
@@ -581,6 +590,9 @@ Item {
             onGlacierSettingsRequested: root.glacierSettingsRequested()
             onSettingsCloseRequested: root.settingsCloseRequested()
             onLiquidGlassRequested: enabled => root.liquidGlassRequested(enabled)
+            onWindowGlassRequested: enabled => root.windowGlassRequested(enabled)
+            onEdgeToEdgeRequested: enabled => root.edgeToEdgeRequested(enabled)
+            onWindowOpacityRequested: opacity => root.windowOpacityRequested(opacity)
             onFontFamilyRequested: family => root.fontFamilyRequested(family)
             onIdleWidthRequested: width => root.idleWidthRequested(width)
             onIdleHeightRequested: height => root.idleHeightRequested(height)

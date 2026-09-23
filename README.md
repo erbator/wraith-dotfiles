@@ -11,18 +11,25 @@ Paths mirror where each file lives relative to `$HOME`. For example
 - Shell: `.config/fish/`
 - Window manager: `.config/hypr/`
 - Terminal: `.config/kitty/`
-- Prompt/theme: `.config/starship.toml`, `.config/gruvbox-rainbow.toml`,
-  `.config/pastel-powerline.toml`, `.config/nerd-font-symbols.toml`
-- GTK/Qt theming: `.config/gtk-3.0/`, `.config/gtk-4.0/`, `.config/qt5ct/`,
-  `.config/qt6ct/`, `.config/kdeglobals`
-- Apps: `.config/btop/`, `.config/micro/`, `.config/mako/`, `.config/dolphinrc`,
+- Prompt: `.config/starship.toml`
+- GTK/Qt theming: `.config/gtk-3.0/settings.ini`, `.config/kdeglobals`,
+  `.config/xsettingsd/`
+- Apps: `.config/btop/`, `.config/micro/`, `.config/dolphinrc`,
   `.config/qylock/`, `.config/satty/`, `.config/shelly/`,
-  `.config/VSCodium/User/`, `.vscode-oss/`
-- Quickshell: `quickshell/dynamic-glacier/` is a snapshot of the live, patched
-  `/usr/share/dynamic-glacier` shell (the bar/panel system driven by the
-  `dynamic-glacier-git` AUR package, customized via `patches/dynamic-glacier-git/`);
-  `quickshell/lockscreen/` is the deployed qylock lockscreen quickshell setup
-  from `~/.local/share/quickshell-lockscreen` (themes live in the separate
+  `.config/VSCodium/User/settings.json`, `.vim/colors/`
+- Themes: `.config/hypr/themes/themes.json` is the list the Theme panel
+  (Super+I) shows; `apply-theme.sh` recolours Hyprland, Kitty, Alacritty,
+  Starship, btop, micro, the GTK accent and Satty from it, and switches
+  Obsidian, VSCodium and vim to that scheme's own port.
+  `.config/hypr/themes/assets/` holds the ported schemes that have to be
+  copied somewhere (currently the Srcery CSS snippet for Obsidian — Obsidian
+  is themed with snippets here, so the vault's own theme is never changed)
+- Quickshell: `quickshell/dynamic-glacier/` is the dynamic island shell
+  (bar, panels, notifications), deployed to `~/.config/quickshell/dynamic-glacier`
+  and run as `quickshell -c dynamic-glacier` — self-contained, it no longer
+  needs the `dynamic-glacier-git` package it started from;
+  `quickshell/lockscreen/` is the qylock lockscreen setup, deployed to
+  `~/.local/share/quickshell-lockscreen` (themes live in the separate
   `qylock` project)
 - System/session bits: `.config/mimeapps.list`, `.config/uwsm/env`,
   `.config/wireplumber/`, `.config/xsettingsd/`, `.config/user-dirs.dirs`,
@@ -64,7 +71,8 @@ wallpapers in `~/Pictures/Wallpapers`, and `chsh -s "$(command -v fish)"`.
 
 ## What's intentionally excluded
 
-App caches, browser profiles, session/state files, and anything holding
-credentials or personal data (e.g. Obsidian vault, Firefox profile, Spotify/
+App caches, browser profiles, session/state files (anything a program
+rewrites by itself — `fish_variables`, VSCodium's extension list, the trash
+and welcome-screen state), and anything holding credentials or personal data (e.g. Obsidian vault, Firefox profile, Spotify/
 Spicetify auth, VSCodium workspace storage, `.ssh`, shell history) are left
 out on purpose since this repo is public.

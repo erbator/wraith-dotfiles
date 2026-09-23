@@ -5,6 +5,9 @@ Item {
     id: root
 
     property bool liquidGlassEnabled: false
+    property bool windowGlassEnabled: true
+    property bool edgeToEdge: false
+    property int windowOpacity: 65
     property int idleWidth: 340
     property int idleHeight: 132
     property string fontFamily: "Noto Sans"
@@ -22,19 +25,130 @@ Item {
     readonly property int sectionSpacing: 10
     readonly property real contentHeight: root.panelPadding * 2
                                           + root.headerHeight
-                                          + root.glassRowHeight
+                                          + root.glassRowHeight * 3
                                           + root.fontRowHeight
                                           + root.sizeRowHeight
                                           + root.footerHeight
-                                          + root.sectionSpacing * 4
+                                          + root.sectionSpacing * 6
     readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
 
     signal closeRequested
     signal liquidGlassRequested(bool enabled)
+    signal windowGlassRequested(bool enabled)
+    signal edgeToEdgeRequested(bool enabled)
+    signal windowOpacityRequested(int opacity)
     signal fontFamilyRequested(string family)
     signal idleWidthRequested(int width)
     signal idleHeightRequested(int height)
     signal resetRequested
+
+    component ToggleRow: Rectangle {
+        id: toggleRow
+
+        required property string label
+        required property string description
+        required property string icon
+        required property bool active
+        property string badge: ""
+
+        signal toggled
+
+        Layout.fillWidth: true
+        Layout.preferredHeight: root.glassRowHeight
+        radius: 14
+        color: "#080808"
+        border.width: 1
+        border.color: toggleRow.active ? "#343434" : "#202020"
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            spacing: 10
+
+            MIcon {
+                name: toggleRow.icon
+                size: 17
+                color: toggleRow.active ? "#f0f0f0" : "#777777"
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 7
+
+                    Text {
+                        text: toggleRow.label
+                        color: root.primaryText
+                        font.family: root.fontFamily
+                        font.pixelSize: 12
+                        font.weight: Font.Bold
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: badgeLabel.implicitWidth + 10
+                        Layout.preferredHeight: 16
+                        radius: 8
+                        color: "#141414"
+                        border.width: 1
+                        border.color: "#292929"
+                        visible: toggleRow.badge !== ""
+
+                        Text {
+                            id: badgeLabel
+
+                            anchors.centerIn: parent
+                            text: toggleRow.badge
+                            color: "#8d8d8d"
+                            font.family: root.fontFamily
+                            font.pixelSize: 8
+                            font.weight: Font.Bold
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: toggleRow.description
+                    color: root.secondaryText
+                    elide: Text.ElideRight
+                    font.family: root.fontFamily
+                    font.pixelSize: 10
+                }
+            }
+
+            Rectangle {
+                Layout.preferredWidth: 40
+                Layout.preferredHeight: 22
+                radius: 11
+                color: toggleRow.active ? "#f0f0f0" : "#0a0a0a"
+                border.width: 1
+                border.color: toggleRow.active ? "#f0f0f0" : "#292929"
+
+                Rectangle {
+                    width: 16
+                    height: 16
+                    radius: 8
+                    y: 3
+                    x: toggleRow.active ? parent.width - width - 3 : 3
+                    color: toggleRow.active ? "#000000" : "#555555"
+
+                    Behavior on x {
+                        NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: toggleRow.toggled()
+                }
+            }
+        }
+    }
 
     component StepControl: Rectangle {
         id: stepControl
@@ -200,101 +314,29 @@ Item {
             }
         }
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: root.glassRowHeight
-            radius: 14
-            color: "#080808"
-            border.width: 1
-            border.color: root.liquidGlassEnabled ? "#343434" : "#202020"
+        ToggleRow {
+            label: "Liquid Glass"
+            badge: "EXPERIMENTAL"
+            description: "Real backdrop blur for every Glacier surface"
+            icon: "water_drop"
+            active: root.liquidGlassEnabled
+            onToggled: root.liquidGlassRequested(!root.liquidGlassEnabled)
+        }
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 10
+        ToggleRow {
+            label: "Window Glass"
+            description: "HyprGlass blur and refraction on every window"
+            icon: "blur_on"
+            active: root.windowGlassEnabled
+            onToggled: root.windowGlassRequested(!root.windowGlassEnabled)
+        }
 
-                MIcon {
-                    name: "water_drop"
-                    size: 17
-                    color: root.liquidGlassEnabled ? "#f0f0f0" : "#777777"
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 0
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 7
-
-                        Text {
-                            text: "Liquid Glass"
-                            color: root.primaryText
-                            font.family: root.fontFamily
-                            font.pixelSize: 12
-                            font.weight: Font.Bold
-                        }
-
-                        Rectangle {
-                            Layout.preferredWidth: experimentalLabel.implicitWidth + 10
-                            Layout.preferredHeight: 16
-                            radius: 8
-                            color: "#141414"
-                            border.width: 1
-                            border.color: "#292929"
-
-                            Text {
-                                id: experimentalLabel
-
-                                anchors.centerIn: parent
-                                text: "EXPERIMENTAL"
-                                color: "#8d8d8d"
-                                font.family: root.fontFamily
-                                font.pixelSize: 8
-                                font.weight: Font.Bold
-                            }
-                        }
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Real backdrop blur for every Glacier surface"
-                        color: root.secondaryText
-                        elide: Text.ElideRight
-                        font.family: root.fontFamily
-                        font.pixelSize: 10
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 22
-                    radius: 11
-                    color: root.liquidGlassEnabled ? "#f0f0f0" : "#0a0a0a"
-                    border.width: 1
-                    border.color: root.liquidGlassEnabled ? "#f0f0f0" : "#292929"
-
-                    Rectangle {
-                        width: 16
-                        height: 16
-                        radius: 8
-                        y: 3
-                        x: root.liquidGlassEnabled ? parent.width - width - 3 : 3
-                        color: root.liquidGlassEnabled ? "#000000" : "#555555"
-
-                        Behavior on x {
-                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.liquidGlassRequested(!root.liquidGlassEnabled)
-                    }
-                }
-            }
+        ToggleRow {
+            label: "Edge to Edge"
+            description: "No gaps or rounding, windows split by a border"
+            icon: "border_outer"
+            active: root.edgeToEdge
+            onToggled: root.edgeToEdgeRequested(!root.edgeToEdge)
         }
 
         Rectangle {
@@ -388,6 +430,13 @@ Item {
                 valueText: root.idleHeight + " px"
                 step: 8
                 onValueRequested: delta => root.idleHeightRequested(root.idleHeight + delta)
+            }
+
+            StepControl {
+                label: "TRANSPARENCY"
+                valueText: root.windowOpacity + "%"
+                step: 5
+                onValueRequested: delta => root.windowOpacityRequested(root.windowOpacity + delta)
             }
         }
 
