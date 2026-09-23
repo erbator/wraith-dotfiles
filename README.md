@@ -35,12 +35,32 @@ Paths mirror where each file lives relative to `$HOME`. For example
 ```sh
 git clone git@github.com:<your-user>/dotfiles.git
 cd dotfiles
-cp -a . ~/          # copies dotfiles + .config subtrees into place
+./install.sh
 ```
 
-Review diffs before overwriting an existing `~/.config` on a machine that
-already has other configs you care about — this repo is not stow-managed and
-will overwrite matching files.
+`install.sh` installs the packages everything here expects and then copies the
+configs into place. It uses `paru` or `yay`, whichever is installed (preferring
+paru), and offers to build paru when neither is — two of the fonts are AUR-only.
+Anything it replaces is copied to `~/.dotfiles-backup/<timestamp>/` first, and
+files that already match are left alone, so re-running it is cheap.
+
+```
+./install.sh --dry-run       print what would happen, change nothing
+./install.sh --no-packages   just deploy the configs
+./install.sh --no-apps       skip kitty/dolphin/firefox/micro/btop/fish/…
+./install.sh --no-backup     overwrite without keeping copies
+./install.sh --yes           don't ask anything (passes --noconfirm)
+```
+
+Two trees do not live at their repo path and the installer handles the mapping:
+`quickshell/dynamic-glacier/` goes to `~/.config/quickshell/dynamic-glacier/`
+and `quickshell/lockscreen/` to `~/.local/share/quickshell-lockscreen/`.
+`patches/` is not deployed — it is applied by root against a
+`/usr/share/dynamic-glacier` install, which this setup no longer uses.
+
+Left to do by hand afterwards: the hyprglass blur plugin (`hyprpm`), the
+lockscreen themes (the separate `qylock` project, symlinked as `themes_link`),
+wallpapers in `~/Pictures/Wallpapers`, and `chsh -s "$(command -v fish)"`.
 
 ## What's intentionally excluded
 
