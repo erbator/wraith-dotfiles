@@ -1,5 +1,5 @@
 {
-  "workbench.colorTheme": "Monochromator Dark Aquamarine",
+  "workbench.colorTheme": "Srcery",
   "window.menuBarVisibility": "toggle",
   "editor.fontSize": 12,
   "editor.scrollbar.vertical": "hidden",
@@ -8,7 +8,7 @@
   "security.workspace.trust.startupPrompt": "never",
   "security.workspace.trust.enabled": false,
   "editor.minimap.side": "left",
-"editor.fontFamily": "'JetbrainsMono Nerd Font','Maple Mono', monospace",
+  "editor.fontFamily": "'JetbrainsMono Nerd Font','Maple Mono', monospace",
   "extensions.autoUpdate": "off",
   "workbench.statusBar.visible": false,
   "terminal.external.linuxExec": "kitty",

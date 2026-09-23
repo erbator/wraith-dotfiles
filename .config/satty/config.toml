@@ -101,12 +101,12 @@ family = "SpaceMono Nerd Font"
 [color-palette]
 # These will be shown in the toolbar for quick selection
 palette = [
-    "#d20f39",
-    "#40a02b",
-    "#e5c890",
-    "#04a5e5",
-    "#8839ef",
-    "#dd7878",
+    "#ef2f27",
+    "#519f50",
+    "#fbb829",
+    "#2c78bf",
+    "#e02c6d",
+    "#0aaeb3",
 ]
 
 # These will be available in the color picker as presets
