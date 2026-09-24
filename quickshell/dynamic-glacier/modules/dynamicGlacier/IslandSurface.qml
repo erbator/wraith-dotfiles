@@ -33,9 +33,7 @@ Item {
     property bool mediaAvailable: false
     property string handleStyle: "bump"
     property bool liquidGlassEnabled: false
-    property bool windowGlassEnabled: true
-    property bool edgeToEdge: false
-    property int windowOpacity: 65
+    property var compositor: ({})
     property int idleWidth: 340
     property int idleHeight: 132
     property string batteryHoverText: ""
@@ -180,9 +178,6 @@ Item {
     property bool wallpaperApplying: false
     property int wallpaperHighlightIndex: 0
 
-    property var clipboardEntries: []
-    property int clipboardHighlightIndex: 0
-    property string clipboardStatusText: ""
 
     signal previousRequested
     signal playPauseRequested
@@ -209,9 +204,7 @@ Item {
     signal glacierSettingsRequested
     signal settingsCloseRequested
     signal liquidGlassRequested(bool enabled)
-    signal windowGlassRequested(bool enabled)
-    signal edgeToEdgeRequested(bool enabled)
-    signal windowOpacityRequested(int opacity)
+    signal compositorRequested(var patch)
     signal fontFamilyRequested(string family)
     signal idleWidthRequested(int width)
     signal idleHeightRequested(int height)
@@ -236,12 +229,6 @@ Item {
     signal powerCloseRequested
     signal powerActionRequested(string action)
     signal clipboardCloseRequested
-    signal clipboardRefreshRequested
-    signal clipboardClearRequested
-    signal clipboardApplyRequested(string raw)
-    signal clipboardDeleteRequested(string raw)
-    signal clipboardHighlightNavRequested(int delta)
-    signal clipboardActivateRequested
     signal timetableCloseRequested
     signal timerCloseRequested
     signal todoCloseRequested
@@ -471,9 +458,7 @@ Item {
             mode: root.mode
             handleStyle: root.handleStyle
             liquidGlassEnabled: root.liquidGlassEnabled
-            windowGlassEnabled: root.windowGlassEnabled
-            edgeToEdge: root.edgeToEdge
-            windowOpacity: root.windowOpacity
+            compositor: root.compositor
             idleWidth: root.idleWidth
             idleHeight: root.idleHeight
             forceExpanded: root.forceExpanded
@@ -556,9 +541,6 @@ Item {
             appsFavoriteSlots: root.appsFavoriteSlots
             appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
             appsPickerHighlightIndex: root.appsPickerHighlightIndex
-            clipboardEntries: root.clipboardEntries
-            clipboardHighlightIndex: root.clipboardHighlightIndex
-            clipboardStatusText: root.clipboardStatusText
             wallpaperEntries: root.wallpaperEntries
             wallpaperCurrentFolder: root.wallpaperCurrentFolder
             currentWallpaperPath: root.currentWallpaperPath
@@ -590,9 +572,7 @@ Item {
             onGlacierSettingsRequested: root.glacierSettingsRequested()
             onSettingsCloseRequested: root.settingsCloseRequested()
             onLiquidGlassRequested: enabled => root.liquidGlassRequested(enabled)
-            onWindowGlassRequested: enabled => root.windowGlassRequested(enabled)
-            onEdgeToEdgeRequested: enabled => root.edgeToEdgeRequested(enabled)
-            onWindowOpacityRequested: opacity => root.windowOpacityRequested(opacity)
+            onCompositorRequested: patch => root.compositorRequested(patch)
             onFontFamilyRequested: family => root.fontFamilyRequested(family)
             onIdleWidthRequested: width => root.idleWidthRequested(width)
             onIdleHeightRequested: height => root.idleHeightRequested(height)
@@ -617,12 +597,6 @@ Item {
             onPowerCloseRequested: root.powerCloseRequested()
             onPowerActionRequested: action => root.powerActionRequested(action)
             onClipboardCloseRequested: root.clipboardCloseRequested()
-            onClipboardRefreshRequested: root.clipboardRefreshRequested()
-            onClipboardClearRequested: root.clipboardClearRequested()
-            onClipboardApplyRequested: raw => root.clipboardApplyRequested(raw)
-            onClipboardDeleteRequested: raw => root.clipboardDeleteRequested(raw)
-            onClipboardHighlightNavRequested: delta => root.clipboardHighlightNavRequested(delta)
-            onClipboardActivateRequested: root.clipboardActivateRequested()
             onTimetableCloseRequested: root.timetableCloseRequested()
             onTimerCloseRequested: root.timerCloseRequested()
             onTodoCloseRequested: root.todoCloseRequested()

@@ -32,9 +32,7 @@ Item {
     property bool mediaAvailable: false
     property string handleStyle: "bump"
     property bool liquidGlassEnabled: false
-    property bool windowGlassEnabled: true
-    property bool edgeToEdge: false
-    property int windowOpacity: 65
+    property var compositor: ({})
     property int idleWidth: 340
     property int idleHeight: 132
     property string batteryHoverText: ""
@@ -135,9 +133,6 @@ Item {
 
     readonly property real clipboardContentHeight: clipboardContent.contentHeight
     property real clipboardMorph: 0
-    property var clipboardEntries: []
-    property int clipboardHighlightIndex: 0
-    property string clipboardStatusText: ""
 
     property real timetableMorph: 0
     readonly property real timetableContentHeight: timetableContent.contentHeight
@@ -243,9 +238,7 @@ Item {
     signal glacierSettingsRequested
     signal settingsCloseRequested
     signal liquidGlassRequested(bool enabled)
-    signal windowGlassRequested(bool enabled)
-    signal edgeToEdgeRequested(bool enabled)
-    signal windowOpacityRequested(int opacity)
+    signal compositorRequested(var patch)
     signal fontFamilyRequested(string family)
     signal idleWidthRequested(int width)
     signal idleHeightRequested(int height)
@@ -268,12 +261,6 @@ Item {
     signal powerCloseRequested
     signal powerActionRequested(string action)
     signal clipboardCloseRequested
-    signal clipboardRefreshRequested
-    signal clipboardClearRequested
-    signal clipboardApplyRequested(string raw)
-    signal clipboardDeleteRequested(string raw)
-    signal clipboardHighlightNavRequested(int delta)
-    signal clipboardActivateRequested
     signal appsSettingsRequested
     signal appsCloseRequested
     signal appsPickerToggleRequested
@@ -1242,9 +1229,8 @@ Item {
 
         anchors.fill: parent
         liquidGlassEnabled: root.liquidGlassEnabled
-        windowGlassEnabled: root.windowGlassEnabled
-        edgeToEdge: root.edgeToEdge
-        windowOpacity: root.windowOpacity
+        compositor: root.compositor
+        handleStyle: root.handleStyle
         idleWidth: root.idleWidth
         idleHeight: root.idleHeight
         fontFamily: root.fontFamily
@@ -1252,9 +1238,8 @@ Item {
         morph: root.settingsMorph
         onCloseRequested: root.settingsCloseRequested()
         onLiquidGlassRequested: enabled => root.liquidGlassRequested(enabled)
-        onWindowGlassRequested: enabled => root.windowGlassRequested(enabled)
-        onEdgeToEdgeRequested: enabled => root.edgeToEdgeRequested(enabled)
-        onWindowOpacityRequested: opacity => root.windowOpacityRequested(opacity)
+        onCompositorRequested: patch => root.compositorRequested(patch)
+        onHandleStyleRequested: style => root.handleStyleRequested(style)
         onFontFamilyRequested: family => root.fontFamilyRequested(family)
         onIdleWidthRequested: width => root.idleWidthRequested(width)
         onIdleHeightRequested: height => root.idleHeightRequested(height)
@@ -1368,18 +1353,9 @@ Item {
         id: clipboardContent
 
         anchors.fill: parent
-        entries: root.clipboardEntries
-        highlightIndex: root.clipboardHighlightIndex
-        statusText: root.clipboardStatusText
         fontFamily: root.fontFamily
         morph: root.clipboardMorph
         onCloseRequested: root.clipboardCloseRequested()
-        onRefreshRequested: root.clipboardRefreshRequested()
-        onClearRequested: root.clipboardClearRequested()
-        onApplyRequested: raw => root.clipboardApplyRequested(raw)
-        onDeleteRequested: raw => root.clipboardDeleteRequested(raw)
-        onHighlightNavRequested: delta => root.clipboardHighlightNavRequested(delta)
-        onActivateRequested: root.clipboardActivateRequested()
     }
 
     Item {

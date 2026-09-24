@@ -347,7 +347,7 @@ if [ "$dry_run" -eq 0 ]; then
         # The compositor overrides are generated too, and Hyprland fails to
         # find the file the config requires until they exist.
         if [ -x "$HOME/.config/hypr/scripts/set-compositor.sh" ] && [ ! -f "$HOME/.config/hypr/config/compositor.lua" ]; then
-            "$HOME/.config/hypr/scripts/set-compositor.sh" 1 65 0 >/dev/null 2>&1 \
+            "$HOME/.config/hypr/scripts/set-compositor.sh" >/dev/null 2>&1 \
                 && ok "compositor defaults written" \
                 || note "could not write the compositor defaults"
         fi

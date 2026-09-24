@@ -72,12 +72,15 @@ Scope {
     property date currentDateTime: new Date()
     property string handleStyle: "bump"
     property bool liquidGlassEnabled: false
-    // Compositor looks owned by the settings panel and pushed to Hyprland
-    // through set-compositor.sh, which both applies them live and writes
-    // them into a config file so they survive a reload.
-    property bool windowGlassEnabled: true
-    property bool edgeToEdge: false
-    property int windowOpacity: 65
+    // Hyprland looks owned by the settings panel's Hyprland tab and pushed
+    // through set-compositor.sh, which both applies them live and writes them
+    // into a config file so they survive a reload. One object, so a new
+    // control does not need a property threaded through every layer.
+    readonly property var compositorDefaults: ({ glass: true, opacity: 65, gaps: 6, rounding: 18, border: 0, blur: true, animations: true, dim: false })
+    property var compositor: root.compositorDefaults
+    // No gaps means windows own every pixel; the island then floats over
+    // them instead of reserving a strip (see reservedZone).
+    readonly property bool edgeToEdge: root.compositor.gaps === 0
     property int peekWidth: 340
     property int peekHeight: 132
     property bool exitPreviewActive: false
@@ -191,6 +194,7 @@ Scope {
     readonly property int batteryMinHeight: 132
     readonly property int settingsWidth: 500
     readonly property int settingsMinHeight: 132
+    readonly property int settingsMaxPanelHeight: 600
     readonly property int appsWidth: 340
     readonly property int appsMinHeight: 132
     readonly property int appsMaxPanelHeight: 470
@@ -204,9 +208,9 @@ Scope {
     readonly property int powerWidth: 380
     readonly property int powerMinHeight: 132
     readonly property int powerMaxPanelHeight: 210
-    readonly property int clipboardWidth: 420
+    readonly property int clipboardWidth: 660
     readonly property int clipboardMinHeight: 132
-    readonly property int clipboardMaxPanelHeight: 420
+    readonly property int clipboardMaxPanelHeight: 500
     readonly property int timetableWidth: 420
     readonly property int timetableMinHeight: 132
     readonly property int timetableMaxPanelHeight: 470
@@ -216,9 +220,9 @@ Scope {
     readonly property int todoWidth: 360
     readonly property int todoMinHeight: 132
     readonly property int todoMaxPanelHeight: 300
-    readonly property int themeWidth: 440
+    readonly property int themeWidth: 580
     readonly property int themeMinHeight: 132
-    readonly property int themeMaxPanelHeight: 250
+    readonly property int themeMaxPanelHeight: 440
     readonly property int reminderWidth: 380
     readonly property int reminderMinHeight: 132
     readonly property int reminderMaxPanelHeight: 400
@@ -256,14 +260,6 @@ Scope {
             root.panelOpenedByKeybind = false;
     }
 
-    // Clipboard history (morphs the island into mode "clipboard"). Backed by
-    // cliphist — Qt's own clipboard API can't reliably see copies made by
-    // other apps while unfocused on Wayland; cliphist watches via the
-    // wlr-data-control protocol through a `wl-paste --watch` daemon started
-    // in autostart.lua.
-    property var clipboardEntries: []
-    property int clipboardHighlightIndex: 0
-    property string clipboardStatusText: ""
     property string fontFamily: "Hack Nerd Font Mono"
     readonly property var fontOptions: [
         "FiraCode Nerd Font Mono",
@@ -651,34 +647,41 @@ Scope {
         root.saveVisualSettings();
     }
 
-    function setWindowGlassEnabled(enabled) {
-        root.windowGlassEnabled = enabled === true;
-        root.saveVisualSettings();
-        root.applyCompositorSettings();
+    // Clamps every field, so neither a hand-edited settings file nor a
+    // slider dragged past its end can hand the script a bad value.
+    function sanitizeCompositor(value) {
+        const merged = Object.assign({}, root.compositorDefaults, value || {});
+        const clamp = (n, low, high, fallback) => {
+            const number = Number(n);
+            return isFinite(number) ? Math.max(low, Math.min(high, Math.round(number))) : fallback;
+        };
+
+        return {
+            glass: merged.glass === true,
+            opacity: clamp(merged.opacity, 30, 100, 65),
+            gaps: clamp(merged.gaps, 0, 24, 6),
+            rounding: clamp(merged.rounding, 0, 24, 18),
+            border: clamp(merged.border, 0, 6, 0),
+            blur: merged.blur !== false,
+            animations: merged.animations !== false,
+            dim: merged.dim === true
+        };
     }
 
-    function setEdgeToEdge(enabled) {
-        root.edgeToEdge = enabled === true;
-        root.saveVisualSettings();
-        root.applyCompositorSettings();
-    }
-
-    function setWindowOpacity(opacity) {
-        const numericOpacity = Number(opacity);
-
-        if (!isFinite(numericOpacity))
-            return;
-
-        root.windowOpacity = Math.max(30, Math.min(100, Math.round(numericOpacity / 5) * 5));
+    function setCompositor(patch) {
+        root.compositor = root.sanitizeCompositor(Object.assign({}, root.compositor, patch || {}));
         root.saveVisualSettings();
         root.applyCompositorSettings();
     }
 
     function applyCompositorSettings() {
-        // running=false first: a second toggle while the first is still in
+        const c = root.compositor;
+        const flag = value => value ? "1" : "0";
+
+        // running=false first: a second change while the first is still in
         // flight would otherwise be a no-op property write.
         compositorProcess.running = false;
-        compositorProcess.command = [Quickshell.env("HOME") + "/.config/hypr/scripts/set-compositor.sh", root.windowGlassEnabled ? "1" : "0", String(root.windowOpacity), root.edgeToEdge ? "1" : "0"];
+        compositorProcess.command = [Quickshell.env("HOME") + "/.config/hypr/scripts/set-compositor.sh", "--glass", flag(c.glass), "--opacity", String(c.opacity), "--gaps", String(c.gaps), "--rounding", String(c.rounding), "--border", String(c.border), "--blur", flag(c.blur), "--animations", flag(c.animations), "--dim", flag(c.dim)];
         compositorProcess.running = true;
     }
 
@@ -710,14 +713,10 @@ Scope {
 
     function resetVisualSettings() {
         root.liquidGlassEnabled = false;
-        root.windowGlassEnabled = true;
-        root.windowOpacity = 65;
-        root.edgeToEdge = false;
         root.peekWidth = 340;
         root.peekHeight = 132;
         root.fontFamily = root.fontOptions[1];
         root.saveVisualSettings();
-        root.applyCompositorSettings();
     }
 
     // Shows a brief thumbnail of a just-taken screenshot, auto-dismissing
@@ -2068,10 +2067,9 @@ Scope {
         root.showIdle();
     }
 
-    // Morphs the island into the clipboard history, or collapses it back to
-    // idle if it is already showing. Mirrors toggleWallpaperPanel. Always
-    // rescans on open (unlike wallpaper's lazy first-scan) since clipboard
-    // content goes stale fast.
+    // Morphs the island into the clipboard panel, or collapses it back to
+    // idle if it is already showing. The panel owns its own history, pins
+    // and cliphist calls, and rescans every time it opens.
     function toggleClipboardPanel() {
         if (root.mode === "clipboard") {
             root.showIdle();
@@ -2081,71 +2079,7 @@ Scope {
         collapseTimer.stop();
         root.exitPreviewActive = false;
         root.mode = "clipboard";
-        root.clipboardStatusText = "";
-        root.clipboardHighlightIndex = 0;
         panelFocusGrab.active = true;
-        root.scanClipboardHistory();
-    }
-
-    function scanClipboardHistory() {
-        clipboardScanProc.exec(["cliphist", "list"]);
-    }
-
-    function parseClipboardEntries(text) {
-        const lines = text.split("\n").filter(line => line.trim() !== "");
-
-        root.clipboardEntries = lines.map(line => {
-            const tabIndex = line.indexOf("\t");
-            const preview = tabIndex !== -1 ? line.slice(tabIndex + 1) : line;
-
-            return { raw: line, preview: preview };
-        });
-
-        root.clipboardHighlightIndex = root.clampIndex(root.clipboardHighlightIndex, root.clipboardEntries.length);
-    }
-
-    // cliphist decode/delete need the *exact* line cliphist list printed
-    // (id + tab + preview) fed back to them, and that line can contain
-    // absolutely anything the user ever copied — including shell
-    // metacharacters like $(...) or `...`. Passing it through the
-    // subprocess's environment and referencing it as "$VAR" (not
-    // interpolating it into the command string) means the shell only ever
-    // substitutes the variable once and never re-parses its contents, so
-    // nothing in a malicious clipboard entry can execute.
-    function runClipboardLineCommand(raw, shellPipeline) {
-        clipboardLineProc.environment = { "CLIPHIST_LINE": raw };
-        clipboardLineProc.exec(["sh", "-c", shellPipeline]);
-    }
-
-    function applyClipboardEntry(raw) {
-        if (raw === "")
-            return;
-
-        root.runClipboardLineCommand(raw, 'printf \'%s\' "$CLIPHIST_LINE" | cliphist decode | wl-copy');
-        root.showIdle();
-    }
-
-    function deleteClipboardEntry(raw) {
-        if (raw === "")
-            return;
-
-        clipboardLineProc.pendingRescan = true;
-        root.runClipboardLineCommand(raw, 'printf \'%s\' "$CLIPHIST_LINE" | cliphist delete');
-    }
-
-    function clearClipboardHistory() {
-        clipboardWipeProc.exec(["cliphist", "wipe"]);
-    }
-
-    function moveClipboardHighlight(delta) {
-        root.clipboardHighlightIndex = root.clampIndex(root.clipboardHighlightIndex + delta, root.clipboardEntries.length);
-    }
-
-    function activateClipboardHighlight() {
-        const entry = root.clipboardEntries[root.clipboardHighlightIndex];
-
-        if (entry)
-            root.applyClipboardEntry(entry.raw);
     }
 
     // Briefly swaps the idle clock for a dot row highlighting the workspace
@@ -2263,9 +2197,17 @@ Scope {
 
             root.handleStyle = parsed.handleStyle === "strip" ? "strip" : "bump";
             root.liquidGlassEnabled = parsed.liquidGlassEnabled === true;
-            root.windowGlassEnabled = parsed.windowGlassEnabled !== false;
-            root.edgeToEdge = parsed.edgeToEdge === true;
-            root.windowOpacity = Math.max(30, Math.min(100, Math.round((Number(parsed.windowOpacity) || 65) / 5) * 5));
+            // Older files kept three separate fields; carry them over.
+            if (parsed.compositor && typeof parsed.compositor === "object")
+                root.compositor = root.sanitizeCompositor(parsed.compositor);
+            else
+                root.compositor = root.sanitizeCompositor({
+                    glass: parsed.windowGlassEnabled !== false,
+                    opacity: parsed.windowOpacity,
+                    gaps: parsed.edgeToEdge === true ? 0 : 6,
+                    rounding: parsed.edgeToEdge === true ? 0 : 18,
+                    border: parsed.edgeToEdge === true ? 2 : 0
+                });
             root.peekWidth = Math.max(300, Math.min(520, Math.round((Number(parsed.idleWidth) || 340) / 10) * 10));
             root.peekHeight = Math.max(112, Math.min(180, Math.round((Number(parsed.idleHeight) || 132) / 4) * 4));
 
@@ -2291,9 +2233,7 @@ Scope {
         visualSettingsFile.setText(JSON.stringify({
             handleStyle: root.handleStyle,
             liquidGlassEnabled: root.liquidGlassEnabled,
-            windowGlassEnabled: root.windowGlassEnabled,
-            edgeToEdge: root.edgeToEdge,
-            windowOpacity: root.windowOpacity,
+            compositor: root.compositor,
             idleWidth: root.peekWidth,
             idleHeight: root.peekHeight,
             fontFamily: root.fontFamily
@@ -2754,36 +2694,6 @@ Scope {
     }
 
     Process {
-        id: clipboardScanProc
-
-        stdout: StdioCollector {
-            onStreamFinished: root.parseClipboardEntries(text)
-        }
-    }
-
-    Process {
-        id: clipboardLineProc
-
-        // Set true before a delete so onExited knows to refresh the list;
-        // left false for an apply, which closes the panel immediately and
-        // picks up a fresh list on the next open anyway.
-        property bool pendingRescan: false
-
-        onExited: {
-            if (clipboardLineProc.pendingRescan) {
-                clipboardLineProc.pendingRescan = false;
-                root.scanClipboardHistory();
-            }
-        }
-    }
-
-    Process {
-        id: clipboardWipeProc
-
-        onExited: root.scanClipboardHistory()
-    }
-
-    Process {
         id: wallpaperApplyProc
 
         property string pendingPath: ""
@@ -2902,7 +2812,7 @@ Scope {
         // Tall enough for the tallest expanded panel so the morph never clips.
         // The surface is transparent and input is limited to `mask`, so the extra
         // room costs nothing.
-        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMinHeight + 260, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32, root.timerMaxPanelHeight + 32, root.todoMaxPanelHeight + 32, root.themeMaxPanelHeight + 32, root.reminderMaxPanelHeight + 32, root.weatherMaxPanelHeight + 32)
+        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMaxPanelHeight + 32, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32, root.timerMaxPanelHeight + 32, root.todoMaxPanelHeight + 32, root.themeMaxPanelHeight + 32, root.reminderMaxPanelHeight + 32, root.weatherMaxPanelHeight + 32)
         visible: true
 
         // end-4 already enables compositor blur for `quickshell:*` surfaces.
@@ -2965,9 +2875,7 @@ Scope {
                 mode: root.visualMode
                 handleStyle: root.handleStyle
                 liquidGlassEnabled: root.liquidGlassEnabled
-                windowGlassEnabled: root.windowGlassEnabled
-                edgeToEdge: root.edgeToEdge
-                windowOpacity: root.windowOpacity
+                compositor: root.compositor
                 idleWidth: root.peekWidth
                 idleHeight: root.peekHeight
                 forceExpanded: root.interactionOpen
@@ -3058,9 +2966,6 @@ Scope {
                 wallpaperStatusText: root.wallpaperStatusText
                 wallpaperApplying: root.wallpaperApplying
                 wallpaperHighlightIndex: root.wallpaperHighlightIndex
-                clipboardEntries: root.clipboardEntries
-                clipboardHighlightIndex: root.clipboardHighlightIndex
-                clipboardStatusText: root.clipboardStatusText
                 onPreviousRequested: root.mediaPrevious()
                 onPlayPauseRequested: root.mediaTogglePlaying()
                 onNextRequested: root.mediaNext()
@@ -3087,9 +2992,7 @@ Scope {
                 onGlacierSettingsRequested: root.toggleSettingsPanel()
                 onSettingsCloseRequested: root.closePanelToWideIdle(root.settingsWidth)
                 onLiquidGlassRequested: enabled => root.setLiquidGlassEnabled(enabled)
-                onWindowGlassRequested: enabled => root.setWindowGlassEnabled(enabled)
-                onEdgeToEdgeRequested: enabled => root.setEdgeToEdge(enabled)
-                onWindowOpacityRequested: opacity => root.setWindowOpacity(opacity)
+                onCompositorRequested: patch => root.setCompositor(patch)
                 onFontFamilyRequested: family => root.setFontFamily(family)
                 onIdleWidthRequested: width => root.setIdleWidth(width)
                 onIdleHeightRequested: height => root.setIdleHeight(height)
@@ -3116,12 +3019,6 @@ Scope {
                 onPowerCloseRequested: root.closePanelToWideIdle(root.powerWidth)
                 onPowerActionRequested: action => root.performPowerAction(action)
                 onClipboardCloseRequested: root.closePanelToWideIdle(root.clipboardWidth)
-                onClipboardRefreshRequested: root.scanClipboardHistory()
-                onClipboardClearRequested: root.clearClipboardHistory()
-                onClipboardApplyRequested: raw => root.applyClipboardEntry(raw)
-                onClipboardDeleteRequested: raw => root.deleteClipboardEntry(raw)
-                onClipboardHighlightNavRequested: delta => root.moveClipboardHighlight(delta)
-                onClipboardActivateRequested: root.activateClipboardHighlight()
                 onTimetableCloseRequested: root.closePanelToWideIdle(root.timetableWidth)
                 onTimerCloseRequested: root.closePanelToWideIdle(root.timerWidth)
                 onTodoCloseRequested: root.closePanelToWideIdle(root.todoWidth)
@@ -3415,10 +3312,6 @@ Scope {
         function power(): void {
             root.panelOpenedByKeybind = true;
             root.toggleLogoutPanel();
-        }
-
-        function clipboardTestApply(raw: string): void {
-            root.applyClipboardEntry(raw);
         }
 
         function clipboard(): void {

@@ -1,111 +1,101 @@
 #!/usr/bin/env bash
-# Sets the compositor looks the Glacier settings panel exposes: the HyprGlass
-# blur plugin, how transparent windows are, and whether windows are spaced
-# out or packed edge to edge.
+# Applies the Hyprland look the Glacier settings panel's Hyprland tab owns.
 #
-# Usage: set-compositor.sh <glass 0|1> <opacity 0-100> [edge-to-edge 0|1]
+# Usage: set-compositor.sh [--glass 0|1] [--opacity 30-100] [--gaps 0-24]
+#                          [--rounding 0-24] [--border 0-6] [--blur 0|1]
+#                          [--animations 0|1] [--dim 0|1]
 #
-# Transparency reaches each surface by the route that looks best on it:
+# Anything left out keeps its default. The shell always passes the full set,
+# so the generated file below is a complete picture of the panel's state.
 #
-#   * ordinary windows   Hyprland's decoration opacity
-#   * terminals          the terminal's own background opacity, because
-#                        compositor alpha fades the text along with the
-#                        background, and windowrules.lua deliberately pins
-#                        terminals to "1.0 override" for that reason
-#   * browsers, players  left fully opaque, as windowrules.lua has them
+# Applied twice over: once live through `hyprctl eval` so a change is instant,
+# and once into config/compositor.lua so it survives a reload (the theme
+# switcher reloads Hyprland). That file is required last by hyprland.lua, so
+# it wins over decorations.lua and plugins.lua.
 #
-# Edge to edge drops every gap and squares the corners, which would
-# otherwise leave wallpaper showing in the notches between windows, and
-# turns on a border so neighbouring windows are still told apart.
-#
-# The Hyprland half is applied twice over: once live through `hyprctl eval`
-# so the change is instant, and once into config/compositor.lua so it
-# survives a reload (the theme switcher reloads Hyprland). That file is
-# required last by hyprland.lua, so it wins over decorations.lua and
-# plugins.lua.
+# The opacity also drives the terminals, as the single control for how see-
+# through everything is. They cannot take it the Hyprland way: windowrules.lua
+# pins them to "1.0 override" because compositor alpha fades their text too.
+# So the same value goes to kitty's own background_opacity (set-kitty.sh),
+# which fades only the background.
 set -euo pipefail
 
-glass="${1:-1}"
-opacity="${2:-65}"
-edge="${3:-0}"
+glass=1 opacity=65 gaps=6 rounding=18 border=0 blur=1 animations=1 dim=0
 
-case "$glass" in
-    0|1) ;;
-    *) echo "glass must be 0 or 1, got: $glass" >&2; exit 1 ;;
-esac
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --glass) glass="$2" ;;
+        --opacity) opacity="$2" ;;
+        --gaps) gaps="$2" ;;
+        --rounding) rounding="$2" ;;
+        --border) border="$2" ;;
+        --blur) blur="$2" ;;
+        --animations) animations="$2" ;;
+        --dim) dim="$2" ;;
+        *) echo "unknown option: $1" >&2; exit 1 ;;
+    esac
+    shift 2
+done
 
-case "$edge" in
-    0|1) ;;
-    *) echo "edge-to-edge must be 0 or 1, got: $edge" >&2; exit 1 ;;
-esac
+check_range() {
+    local name="$1" value="$2" low="$3" high="$4"
 
-if ! [ "$opacity" -ge 0 ] 2>/dev/null || ! [ "$opacity" -le 100 ] 2>/dev/null; then
-    echo "opacity must be 0-100, got: $opacity" >&2
-    exit 1
-fi
+    if ! [ "$value" -ge "$low" ] 2>/dev/null || ! [ "$value" -le "$high" ] 2>/dev/null; then
+        echo "$name must be $low-$high, got: $value" >&2
+        exit 1
+    fi
+}
 
-# Inactive windows sit a touch further back, the same 3 points apart as the
-# hand-written config had, and fully opaque stays fully opaque.
+check_range glass "$glass" 0 1
+check_range opacity "$opacity" 0 100
+check_range gaps "$gaps" 0 40
+check_range rounding "$rounding" 0 40
+check_range border "$border" 0 10
+check_range blur "$blur" 0 1
+check_range animations "$animations" 0 1
+check_range dim "$dim" 0 1
+
+lua_bool() { [ "$1" -eq 1 ] && echo true || echo false; }
+
+# Inactive windows sit a touch further back, 3 points below the active ones,
+# and fully opaque stays fully opaque.
 active=$(printf '%d.%02d' $((opacity / 100)) $((opacity % 100)))
 inactive_pct=$((opacity >= 100 ? 100 : opacity - 3))
 [ "$inactive_pct" -lt 0 ] && inactive_pct=0
 inactive=$(printf '%d.%02d' $((inactive_pct / 100)) $((inactive_pct % 100)))
 
-if [ "$edge" -eq 1 ]; then
-    gaps_in=0
-    gaps_out=0
-    border_size=2
-    rounding=0
-else
-    gaps_in=6
-    gaps_out=6
-    border_size=0
-    rounding=18
-fi
-
-layout="general = { gaps_in = $gaps_in, gaps_out = $gaps_out, border_size = $border_size }, decoration = { rounding = $rounding }"
+table="general = { gaps_in = $gaps, gaps_out = $gaps, border_size = $border },
+    decoration = {
+        rounding = $rounding,
+        active_opacity = $active,
+        inactive_opacity = $inactive,
+        dim_inactive = $(lua_bool "$dim"),
+        blur = { enabled = $(lua_bool "$blur") },
+    },
+    animations = { enabled = $(lua_bool "$animations") },
+    plugin = { hyprglass = { enabled = $glass } }"
 
 cat > "$HOME/.config/hypr/config/compositor.lua" <<EOF
--- Generated by set-compositor.sh. Do not hand-edit — use the Glacier
--- settings panel (Super+S), your changes will be overwritten.
+-- Generated by set-compositor.sh. Do not hand-edit — use the Hyprland tab of
+-- the Glacier settings panel (Super+S), your changes will be overwritten.
 --
 -- Required last by hyprland.lua so these win over decorations.lua and
 -- plugins.lua.
 
 hl.config({
-    general = {
-        gaps_in = $gaps_in,
-        gaps_out = $gaps_out,
-        border_size = $border_size,
-    },
-    decoration = {
-        rounding = $rounding,
-        active_opacity = $active,
-        inactive_opacity = $inactive,
-    },
-    plugin = {
-        hyprglass = {
-            enabled = $glass,
-        },
-    },
+    $table
 })
 EOF
 
 # This Hyprland uses the Lua parser, where `hyprctl keyword` is refused —
 # `eval` takes the same table the config files pass to hl.config.
-hyprctl eval "hl.config({ $layout, plugin = { hyprglass = { enabled = $glass } } })" >/dev/null 2>&1 || true
-hyprctl eval "hl.config({ decoration = { active_opacity = $active, inactive_opacity = $inactive } })" >/dev/null 2>&1 || true
+hyprctl eval "hl.config({ $table })" >/dev/null 2>&1 || true
 
-# Kitty: only the background fades, so text stays readable at any setting.
-# It re-reads its config on SIGUSR1, so open terminals follow immediately.
+# Only rewrites kitty.conf (and reloads kitty) when the value actually changes,
+# since this also runs on every shell start.
 kitty_config="$HOME/.config/kitty/kitty.conf"
+current=$(grep -m1 -E '^background_opacity' "$kitty_config" 2>/dev/null | awk '{print $2}')
 
-if [ -f "$kitty_config" ]; then
-    if grep -q '^background_opacity' "$kitty_config"; then
-        sed -i "s/^background_opacity.*/background_opacity          $active/" "$kitty_config"
-    else
-        printf 'background_opacity          %s\n' "$active" >> "$kitty_config"
-    fi
-
-    pkill -USR1 -x kitty 2>/dev/null || true
+if [ -x "$HOME/.config/hypr/scripts/set-kitty.sh" ] && [ "$current" != "$active" ]; then
+    "$HOME/.config/hypr/scripts/set-kitty.sh" background_opacity "$active" || true
 fi
