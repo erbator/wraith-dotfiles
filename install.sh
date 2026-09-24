@@ -76,6 +76,8 @@ CORE_PACKAGES=(
     upower power-profiles-daemon brightnessctl playerctl
     # Wallpaper, clipboard, screenshots, colour picker
     awww cliphist wl-clipboard grim slurp satty hyprpicker
+    # Wallpaper thumbnails (wall-thumbs.sh; falls back to ImageMagick)
+    libvips
     # Used by the scripts in .config/hypr/scripts
     jq curl psmisc
     # Fonts: Material Symbols draws every icon in the shell, the Nerd Fonts

@@ -174,12 +174,6 @@ Item {
     property int appsFavoriteHighlightIndex: 0
     property int appsPickerHighlightIndex: 0
 
-    property var wallpaperEntries: []
-    property string wallpaperCurrentFolder: ""
-    property string currentWallpaperPath: ""
-    property string wallpaperStatusText: ""
-    property bool wallpaperApplying: false
-    property int wallpaperHighlightIndex: 0
 
 
     signal previousRequested
@@ -223,11 +217,6 @@ Item {
     signal appsFavoriteToggleRequested(string id)
     signal appsLaunchRequested(string id)
     signal wallpaperCloseRequested
-    signal wallpaperRefreshRequested
-    signal wallpaperEntryActivated(int index)
-    signal wallpaperBackRequested
-    signal wallpaperHighlightNavRequested(int dx, int dy)
-    signal wallpaperActivateRequested
     signal calcCloseRequested
     signal powerCloseRequested
     signal powerActionRequested(string action)
@@ -552,12 +541,6 @@ Item {
             appsFavoriteSlots: root.appsFavoriteSlots
             appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
             appsPickerHighlightIndex: root.appsPickerHighlightIndex
-            wallpaperEntries: root.wallpaperEntries
-            wallpaperCurrentFolder: root.wallpaperCurrentFolder
-            currentWallpaperPath: root.currentWallpaperPath
-            wallpaperStatusText: root.wallpaperStatusText
-            wallpaperApplying: root.wallpaperApplying
-            wallpaperHighlightIndex: root.wallpaperHighlightIndex
             onPreviousRequested: root.previousRequested()
             onPlayPauseRequested: root.playPauseRequested()
             onNextRequested: root.nextRequested()
@@ -599,11 +582,6 @@ Item {
             onAppsFavoriteToggleRequested: id => root.appsFavoriteToggleRequested(id)
             onAppsLaunchRequested: id => root.appsLaunchRequested(id)
             onWallpaperCloseRequested: root.wallpaperCloseRequested()
-            onWallpaperRefreshRequested: root.wallpaperRefreshRequested()
-            onWallpaperEntryActivated: index => root.wallpaperEntryActivated(index)
-            onWallpaperBackRequested: root.wallpaperBackRequested()
-            onWallpaperHighlightNavRequested: (dx, dy) => root.wallpaperHighlightNavRequested(dx, dy)
-            onWallpaperActivateRequested: root.wallpaperActivateRequested()
             onCalcCloseRequested: root.calcCloseRequested()
             onPowerCloseRequested: root.powerCloseRequested()
             onPowerActionRequested: action => root.powerActionRequested(action)

@@ -234,6 +234,21 @@ Item {
 
     readonly property int selectedRow: root.dayRows.findIndex(r => r.kind === "lesson" && r.index === root.selectedLesson)
 
+    // True while a day switch is settling: the highlight is hidden and then
+    // placed directly, instead of sitting on (or sliding across) whatever row
+    // of the new day has the old index — often a break spacer.
+    property bool highlightJump: false
+
+    function syncHighlight() {
+        const row = root.selectedRow;
+        dayList.currentIndex = row >= 0 && row < dayList.count && root.dayRows[row].kind === "lesson" ? row : -1;
+        if (root.highlightJump)
+            Qt.callLater(() => root.highlightJump = false);
+    }
+
+    onSelectedRowChanged: Qt.callLater(root.syncHighlight)
+    onDayRowsChanged: Qt.callLater(root.syncHighlight)
+
     // ── Edits ─────────────────────────────────────────────────────────────
     function setNote(dayIndex, lessonIndex, note) {
         const sorted = root.lessonsOf(dayIndex);
@@ -277,6 +292,8 @@ Item {
         const previous = root.lessonsOf(root.selectedDay)[root.selectedLesson] || null;
         const direction = target > root.selectedDay ? 1 : -1;
         root.editingLesson = -1;
+        root.highlightJump = true;
+        dayList.currentIndex = -1;
         root.selectedDay = target;
 
         let pick = -1;
@@ -294,6 +311,7 @@ Item {
         root.selectedLesson = pick;
         daySwap.direction = direction;
         daySwap.restart();
+        Qt.callLater(root.syncHighlight);
     }
 
     function moveLesson(delta) {
@@ -306,11 +324,14 @@ Item {
     function goToday() {
         root.now = new Date();
         root.weekView = false;
+        root.highlightJump = true;
+        dayList.currentIndex = -1;
         root.selectedDay = root.todayIndex >= 0 ? root.todayIndex : (root.status.dayIndex !== undefined ? root.status.dayIndex : 0);
         root.selectedLesson = -1;
         root.editingLesson = -1;
         if (root.todayIndex >= 0 && root.status.index !== undefined && (root.status.kind === "class" || root.status.kind === "break" || root.status.kind === "before"))
             root.selectedLesson = root.status.index;
+        Qt.callLater(root.syncHighlight);
     }
 
     // ── Files ─────────────────────────────────────────────────────────────
@@ -889,11 +910,15 @@ Item {
 
                     // One highlight that glides between lessons, and a view
                     // that scrolls smoothly to keep it in sight.
-                    currentIndex: root.selectedRow
+                    // currentIndex is set once the rows have settled (see
+                    // syncHighlight), not bound: a binding could apply the
+                    // new day's row number to the old day's rows — landing on
+                    // a break spacer — and ListView resets it on model changes.
+                    currentIndex: -1
                     highlightFollowsCurrentItem: true
-                    highlightMoveDuration: 220
+                    highlightMoveDuration: root.highlightJump ? 0 : 220
                     highlightMoveVelocity: -1
-                    highlightResizeDuration: 220
+                    highlightResizeDuration: root.highlightJump ? 0 : 220
                     highlightResizeVelocity: -1
                     highlightRangeMode: ListView.ApplyRange
                     preferredHighlightBegin: 34
@@ -903,7 +928,7 @@ Item {
                         color: "#141414"
                         border.width: 1
                         border.color: "#2c2c2c"
-                        visible: root.selectedRow >= 0
+                        visible: dayList.currentIndex >= 0 && !root.highlightJump
                     }
 
                     transform: Translate {
@@ -1530,8 +1555,11 @@ Item {
                                 anchors.fill: parent
                                 onClicked: {
                                     root.weekView = false;
+                                    root.highlightJump = true;
+                                    dayList.currentIndex = -1;
                                     root.selectedDay = cell.modelData.day;
                                     root.selectedLesson = cell.modelData.index;
+                                    Qt.callLater(root.syncHighlight);
                                 }
                             }
                         }

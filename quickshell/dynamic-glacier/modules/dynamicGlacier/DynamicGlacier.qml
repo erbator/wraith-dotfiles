@@ -266,10 +266,9 @@ Scope {
     readonly property int appsWidth: 340
     readonly property int appsMinHeight: 132
     readonly property int appsMaxPanelHeight: 470
-    readonly property int wallpaperWidth: 420
+    readonly property int wallpaperWidth: 780
     readonly property int wallpaperMinHeight: 132
-    readonly property int wallpaperMaxPanelHeight: 420
-    readonly property int wallpaperGridColumns: 3
+    readonly property int wallpaperMaxPanelHeight: 540
     readonly property int calcWidth: 360
     readonly property int calcMinHeight: 132
     readonly property int calcMaxPanelHeight: 230
@@ -464,23 +463,6 @@ Scope {
     // Always appsFavoriteSlots long, so the grid can render empty slots as "add here".
     readonly property var favoriteAppEntries: root.buildFavoriteEntries()
 
-    // Wallpaper switcher (morphs the island into mode "wallpaper")
-    readonly property string wallpaperDir: Quickshell.env("HOME") + "/Pictures/Wallpapers"
-    readonly property string wallpaperStatePath: Quickshell.statePath("wallpaper.json")
-    property var wallpaperEntries: []
-    // {folderName: [fileName, ...]}, plus loose files sitting directly in
-    // wallpaperDir — both populated from one scan, so browsing into/out of
-    // a folder never needs to touch the filesystem again.
-    property var wallpaperFolderMap: ({})
-    property var wallpaperRootFiles: []
-    // "" means the folder list itself is showing.
-    property string wallpaperCurrentFolder: ""
-    property string currentWallpaperPath: ""
-    property string wallpaperStatusText: ""
-    property bool wallpaperApplying: false
-    property bool wallpaperScanned: false
-    property int wallpaperHighlightIndex: 0
-
     function targetWidth() {
         switch (root.visualMode) {
         case "notify":
@@ -666,7 +648,6 @@ Scope {
         root.wifiPasswordDraft = "";
         root.wifiStatusText = "";
         root.btStatusText = "";
-        root.wallpaperStatusText = "";
 
         // Tell the sending app its notification is gone (timeout or the user
         // dismissed it), rather than leaving it thinking the banner is still up.
@@ -1831,175 +1812,7 @@ Scope {
         collapseTimer.stop();
         root.exitPreviewActive = false;
         root.mode = "wallpaper";
-        root.wallpaperStatusText = "";
-        root.wallpaperCurrentFolder = "";
-        root.wallpaperHighlightIndex = 0;
         panelFocusGrab.active = true;
-
-        if (!root.wallpaperScanned)
-            root.scanWallpapers();
-        else
-            root.rebuildWallpaperEntries();
-    }
-
-    // Single recursive-ish scan (one level of subfolders) covers the whole
-    // library in one process instead of a request per folder — entering a
-    // folder afterwards is then just a local rebuild, no rescan needed.
-    function scanWallpapers() {
-        root.wallpaperScanned = true;
-        wallpaperScanProc.exec(["sh", "-c", "find " + JSON.stringify(root.wallpaperDir) + " -mindepth 1 -maxdepth 2 -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.bmp' \\) -printf '%P\\n' | sort"]);
-    }
-
-    // Every line is either "file.jpg" (loose, directly in wallpaperDir) or
-    // "folder/file.jpg" (one level down) — %P already gives paths relative
-    // to wallpaperDir, so a missing "/" is exactly the "loose file" case.
-    function parseWallpaperEntries(text) {
-        const lines = text.split("\n").filter(line => line !== "");
-        const folderMap = {};
-        const rootFiles = [];
-
-        for (const line of lines) {
-            const slashIndex = line.indexOf("/");
-
-            if (slashIndex === -1) {
-                rootFiles.push(line);
-            } else {
-                const folder = line.slice(0, slashIndex);
-                const file = line.slice(slashIndex + 1);
-
-                if (!folderMap[folder])
-                    folderMap[folder] = [];
-
-                folderMap[folder].push(file);
-            }
-        }
-
-        root.wallpaperFolderMap = folderMap;
-        root.wallpaperRootFiles = rootFiles;
-        root.rebuildWallpaperEntries();
-    }
-
-    // Recomputes what the grid should show for the current folder (or the
-    // folder list, at the root) from the already-scanned data — no process
-    // spawned, so entering/leaving a folder is instant.
-    function rebuildWallpaperEntries() {
-        if (root.wallpaperCurrentFolder === "") {
-            const folderNames = Object.keys(root.wallpaperFolderMap).sort();
-            const folderEntries = folderNames.map(name => {
-                const files = root.wallpaperFolderMap[name];
-
-                return {
-                    kind: "folder",
-                    name: name,
-                    count: files.length,
-                    path: root.wallpaperDir + "/" + name,
-                    thumbnailPath: root.wallpaperDir + "/" + name + "/" + files[0]
-                };
-            });
-            const rootImageEntries = root.wallpaperRootFiles.slice().sort().map(file => ({
-                kind: "image",
-                name: file,
-                path: root.wallpaperDir + "/" + file,
-                thumbnailPath: root.wallpaperDir + "/" + file
-            }));
-
-            root.wallpaperEntries = folderEntries.concat(rootImageEntries);
-        } else {
-            const files = root.wallpaperFolderMap[root.wallpaperCurrentFolder] || [];
-
-            root.wallpaperEntries = files.slice().sort().map(file => ({
-                kind: "image",
-                name: file,
-                path: root.wallpaperDir + "/" + root.wallpaperCurrentFolder + "/" + file,
-                thumbnailPath: root.wallpaperDir + "/" + root.wallpaperCurrentFolder + "/" + file
-            }));
-        }
-
-        root.wallpaperHighlightIndex = root.clampIndex(root.wallpaperHighlightIndex, root.wallpaperEntries.length);
-    }
-
-    function enterWallpaperFolder(name) {
-        root.wallpaperCurrentFolder = name;
-        root.wallpaperHighlightIndex = 0;
-        root.rebuildWallpaperEntries();
-    }
-
-    function exitWallpaperFolder() {
-        root.wallpaperCurrentFolder = "";
-        root.wallpaperHighlightIndex = 0;
-        root.rebuildWallpaperEntries();
-    }
-
-    function applyWallpaper(path) {
-        if (path === "" || root.wallpaperApplying)
-            return;
-
-        root.wallpaperApplying = true;
-        root.wallpaperStatusText = "";
-        wallpaperApplyProc.pendingPath = path;
-        // "crop" fills the screen edge-to-edge with no letterbox bars,
-        // cropping whatever doesn't fit. "fit" (tried earlier) shows the
-        // whole image but adds black bars whenever the aspect ratio
-        // doesn't match the screen — not wanted here.
-        wallpaperApplyProc.exec(["awww", "img", path, "--resize", "crop", "--transition-type", "grow", "--transition-duration", "0.6", "--transition-fps", "60"]);
-    }
-
-    function onWallpaperApplyFinished(path, success) {
-        root.wallpaperApplying = false;
-
-        if (!success) {
-            root.wallpaperStatusText = "Failed to apply";
-            return;
-        }
-
-        root.currentWallpaperPath = path;
-        wallpaperStateFile.setText(JSON.stringify({ path: path }));
-    }
-
-    function applyPersistedWallpaperState(text) {
-        try {
-            const parsed = JSON.parse(text);
-
-            if (typeof parsed.path === "string")
-                root.currentWallpaperPath = parsed.path;
-        } catch (error) {
-            // No saved wallpaper state yet, or hand-edited into invalid JSON.
-        }
-    }
-
-    function moveWallpaperHighlight(dx, dy) {
-        const columns = root.wallpaperGridColumns;
-        const count = root.wallpaperEntries.length;
-
-        if (count === 0)
-            return;
-
-        const rows = Math.ceil(count / columns);
-        const col = Math.max(0, Math.min(columns - 1, (root.wallpaperHighlightIndex % columns) + dx));
-        const row = Math.max(0, Math.min(rows - 1, Math.floor(root.wallpaperHighlightIndex / columns) + dy));
-
-        root.wallpaperHighlightIndex = root.clampIndex(row * columns + col, count);
-    }
-
-    function activateWallpaperHighlight() {
-        const entry = root.wallpaperEntries[root.wallpaperHighlightIndex];
-
-        if (!entry)
-            return;
-
-        if (entry.kind === "folder")
-            root.enterWallpaperFolder(entry.name);
-        else
-            root.applyWallpaper(entry.path);
-    }
-
-    // Mouse clicks report the tile's index rather than always going through
-    // whatever is keyboard-highlighted — clicking a tile should act on that
-    // tile, not silently apply/enter something else that happened to be
-    // highlighted from an earlier arrow-key press.
-    function activateWallpaperEntry(index) {
-        root.wallpaperHighlightIndex = index;
-        root.activateWallpaperHighlight();
     }
 
     // Morphs the island into the timetable, or collapses it back to idle if
@@ -2751,13 +2564,6 @@ Scope {
     }
 
     Process {
-        id: wallpaperDirProc
-
-        running: true
-        command: ["mkdir", "-p", root.wallpaperDir]
-    }
-
-    Process {
         id: lyricsFetchProc
 
         property string requestKey: ""
@@ -2765,32 +2571,6 @@ Scope {
         stdout: StdioCollector {
             onStreamFinished: root.applyLyricsText(lyricsFetchProc.requestKey, text)
         }
-    }
-
-    Process {
-        id: wallpaperScanProc
-
-        stdout: StdioCollector {
-            onStreamFinished: root.parseWallpaperEntries(text)
-        }
-    }
-
-    Process {
-        id: wallpaperApplyProc
-
-        property string pendingPath: ""
-
-        onExited: exitCode => root.onWallpaperApplyFinished(wallpaperApplyProc.pendingPath, exitCode === 0)
-    }
-
-    FileView {
-        id: wallpaperStateFile
-
-        path: root.wallpaperStatePath
-        preload: true
-        atomicWrites: true
-        printErrors: false
-        onLoaded: root.applyPersistedWallpaperState(wallpaperStateFile.text())
     }
 
     Timer {
@@ -3045,12 +2825,6 @@ Scope {
                 appsFavoriteSlots: root.appsFavoriteSlots
                 appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
                 appsPickerHighlightIndex: root.appsPickerHighlightIndex
-                wallpaperEntries: root.wallpaperEntries
-                wallpaperCurrentFolder: root.wallpaperCurrentFolder
-                currentWallpaperPath: root.currentWallpaperPath
-                wallpaperStatusText: root.wallpaperStatusText
-                wallpaperApplying: root.wallpaperApplying
-                wallpaperHighlightIndex: root.wallpaperHighlightIndex
                 onPreviousRequested: root.mediaPrevious()
                 onPlayPauseRequested: root.mediaTogglePlaying()
                 onNextRequested: root.mediaNext()
@@ -3095,11 +2869,6 @@ Scope {
                 onAppsFavoriteToggleRequested: id => root.toggleFavoriteApp(id)
                 onAppsLaunchRequested: id => root.launchFavoriteApp(id)
                 onWallpaperCloseRequested: root.closePanelToWideIdle(root.wallpaperWidth)
-                onWallpaperRefreshRequested: root.scanWallpapers()
-                onWallpaperEntryActivated: index => root.activateWallpaperEntry(index)
-                onWallpaperBackRequested: root.exitWallpaperFolder()
-                onWallpaperHighlightNavRequested: (dx, dy) => root.moveWallpaperHighlight(dx, dy)
-                onWallpaperActivateRequested: root.activateWallpaperHighlight()
                 onCalcCloseRequested: root.closePanelToWideIdle(root.calcWidth)
                 onPowerCloseRequested: root.closePanelToWideIdle(root.powerWidth)
                 onPowerActionRequested: action => root.performPowerAction(action)

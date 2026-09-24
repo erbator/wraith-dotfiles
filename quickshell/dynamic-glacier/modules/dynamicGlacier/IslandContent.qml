@@ -123,12 +123,6 @@ Item {
 
     property real wallpaperMorph: 0
     readonly property real wallpaperContentHeight: wallpaperContent.contentHeight
-    property var wallpaperEntries: []
-    property string wallpaperCurrentFolder: ""
-    property string currentWallpaperPath: ""
-    property string wallpaperStatusText: ""
-    property bool wallpaperApplying: false
-    property int wallpaperHighlightIndex: 0
 
     property real calcMorph: 0
     readonly property real powerContentHeight: powerContent.contentHeight
@@ -248,11 +242,6 @@ Item {
     signal idleHeightRequested(int height)
     signal settingsResetRequested
     signal wallpaperCloseRequested
-    signal wallpaperRefreshRequested
-    signal wallpaperEntryActivated(int index)
-    signal wallpaperBackRequested
-    signal wallpaperHighlightNavRequested(int dx, int dy)
-    signal wallpaperActivateRequested
     signal calcCloseRequested
     signal timetableCloseRequested
     signal timerCloseRequested
@@ -1256,21 +1245,9 @@ Item {
         id: wallpaperContent
 
         anchors.fill: parent
-        entries: root.wallpaperEntries
-        currentFolder: root.wallpaperCurrentFolder
-        currentPath: root.currentWallpaperPath
-        statusText: root.wallpaperStatusText
-        applying: root.wallpaperApplying
-        highlightIndex: root.wallpaperHighlightIndex
         fontFamily: root.fontFamily
         morph: root.wallpaperMorph
         onCloseRequested: root.wallpaperCloseRequested()
-        onSettingsRequested: root.glacierSettingsRequested()
-        onRefreshRequested: root.wallpaperRefreshRequested()
-        onEntryActivated: index => root.wallpaperEntryActivated(index)
-        onBackRequested: root.wallpaperBackRequested()
-        onHighlightNavRequested: (dx, dy) => root.wallpaperHighlightNavRequested(dx, dy)
-        onActivateRequested: root.wallpaperActivateRequested()
     }
 
     CalculatorPanel {
