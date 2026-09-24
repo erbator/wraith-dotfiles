@@ -279,9 +279,9 @@ Scope {
     readonly property int clipboardWidth: 660
     readonly property int clipboardMinHeight: 132
     readonly property int clipboardMaxPanelHeight: 500
-    readonly property int timetableWidth: 420
+    readonly property int timetableWidth: 560
     readonly property int timetableMinHeight: 132
-    readonly property int timetableMaxPanelHeight: 470
+    readonly property int timetableMaxPanelHeight: 600
     readonly property int timerWidth: 460
     readonly property int timerMinHeight: 132
     readonly property int timerMaxPanelHeight: 400

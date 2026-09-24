@@ -1290,7 +1290,6 @@ Item {
         fontFamily: root.fontFamily
         morph: root.timetableMorph
         onCloseRequested: root.timetableCloseRequested()
-        onSettingsRequested: root.glacierSettingsRequested()
     }
 
     TimerPanel {
