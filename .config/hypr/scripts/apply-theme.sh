@@ -77,8 +77,12 @@ blend() {
 }
 
 # One and two steps above the background, for panels and inset blocks.
-surface1=$(blend "$background" "$foreground" 9)
-surface2=$(blend "$background" "$foreground" 20)
+# A theme can name them itself (Slime does, so it only ever uses colours from
+# its source image); otherwise they are blended.
+surface1=$(get '.surface1 // empty')
+surface2=$(get '.surface2 // empty')
+[ -n "$surface1" ] || surface1=$(blend "$background" "$foreground" 9)
+[ -n "$surface2" ] || surface2=$(blend "$background" "$foreground" 20)
 
 # On a fresh machine some of these directories only exist once the program
 # has run for the first time.
@@ -368,9 +372,10 @@ if [ -n "$obsidian_snippet" ] && [ -f "$obsidian_registry" ]; then
         asset="$HOME/.config/hypr/themes/assets/obsidian/snippets/$obsidian_snippet.css"
         snippets_dir="$vault/.obsidian/snippets"
 
-        # Hand-written snippets already in the vault (l.css) win over a
-        # vendored copy; only the ones this repo ships get installed.
-        if [ -f "$asset" ] && [ ! -f "$snippets_dir/$obsidian_snippet.css" ]; then
+        # Snippets these dotfiles ship (srcery, slime) are kept in sync with
+        # the copy in themes/assets, so edits to a theme reach the vault.
+        # Hand-written ones (l.css) have no asset and are never touched.
+        if [ -f "$asset" ] && ! cmp -s "$asset" "$snippets_dir/$obsidian_snippet.css"; then
             mkdir -p "$snippets_dir"
             cp "$asset" "$snippets_dir/$obsidian_snippet.css"
         fi

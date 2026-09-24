@@ -1,0 +1,142 @@
+/*
+ * Slime for Obsidian, as a CSS snippet.
+ *
+ * The base — background, lime text, every green, the creams and taupes — is
+ * exact pixel colours from the Slime source image. A handful of earthy
+ * accents (rust, amber, steel, plum, teal) sit on top for links and code;
+ * greens still do the heavy lifting.
+ *
+ * Installed into every vault by apply-theme.sh when the Slime theme is
+ * picked, which enables exactly one colour-scheme snippet at a time.
+ */
+
+.theme-dark {
+  /* The image's palette, and nothing else */
+  --slime-lime: #9DC338;
+  --slime-green-2: #819E31;
+  --slime-green: #79932F;
+  --slime-plate: #5A6B27;
+  --slime-olive-2: #465122;
+  --slime-olive: #3B4320;
+  --slime-olive-dark: #30351E;
+  --slime-highlight: #FFF1CA;
+  --slime-cream: #C3B498;
+  --slime-taupe-2: #958974;
+  --slime-taupe: #8C816D;
+  --slime-stone: #676052;
+  --slime-ash: #403C34;
+  --slime-surface: #23211E;
+  --slime-bg: #1C1B19;
+  --slime-black: #060708;
+
+  /* Accents added on top of the image palette */
+  --slime-rust: #C2573F;
+  --slime-amber: #D4A843;
+  --slime-steel: #8FAEC4;
+  --slime-plum: #BD8CA6;
+  --slime-teal: #7FBBA8;
+
+  --background-primary: var(--slime-bg);
+  --background-primary-alt: var(--slime-surface);
+  --background-secondary: var(--slime-black);
+  --background-secondary-alt: var(--slime-bg);
+  --background-modifier-hover: var(--slime-surface);
+  --background-modifier-active-hover: var(--slime-olive-dark);
+  --background-modifier-border: var(--slime-ash);
+  --background-modifier-border-hover: var(--slime-stone);
+  --background-modifier-form-field: var(--slime-surface);
+  --background-modifier-box-shadow: var(--slime-black);
+
+  --interactive-normal: var(--slime-surface);
+  --interactive-hover: var(--slime-ash);
+  --interactive-accent: var(--slime-green);
+  --interactive-accent-hover: var(--slime-lime);
+  --color-accent: var(--slime-green);
+  --color-accent-1: var(--slime-lime);
+  --color-accent-2: var(--slime-lime);
+
+  --text-normal: var(--slime-lime);
+  --text-muted: var(--slime-green);
+  --text-faint: var(--slime-plate);
+  --text-on-accent: var(--slime-black);
+  --text-accent: var(--slime-lime);
+  --text-accent-hover: var(--slime-highlight);
+  --text-selection: var(--slime-olive);
+  --text-highlight-bg: var(--slime-olive-2);
+
+  --nav-item-color: var(--slime-green);
+  --nav-item-color-hover: var(--slime-lime);
+  --nav-item-color-active: var(--slime-lime);
+  --nav-item-background-hover: var(--slime-surface);
+  --nav-item-background-active: var(--slime-olive-dark);
+
+  --tab-text-color: var(--slime-green);
+  --tab-text-color-focused: var(--slime-lime);
+  --tab-text-color-active: var(--slime-lime);
+  --tab-container-background: var(--slime-black);
+  --tab-background-active: var(--slime-bg);
+  --divider-color: var(--slime-ash);
+
+  --h1-color: var(--slime-lime);
+  --h2-color: var(--slime-lime);
+  --h3-color: var(--slime-green-2);
+  --h4-color: var(--slime-green);
+  --h5-color: var(--slime-cream);
+  --h6-color: var(--slime-taupe);
+
+  --link-color: var(--slime-lime);
+  --link-color-hover: var(--slime-highlight);
+  --link-external-color: var(--slime-steel);
+  --link-unresolved-color: var(--slime-amber);
+
+  --tag-color: var(--slime-lime);
+  --tag-background: var(--slime-olive-dark);
+  --tag-background-hover: var(--slime-olive);
+
+  --blockquote-border-color: var(--slime-plate);
+  --blockquote-color: var(--slime-green);
+
+  --code-background: var(--slime-black);
+  --code-normal: var(--slime-lime);
+  --code-comment: var(--slime-stone);
+  --code-keyword: var(--slime-plum);
+  --code-function: var(--slime-steel);
+  --code-string: var(--slime-lime);
+  --code-value: var(--slime-amber);
+  --code-property: var(--slime-teal);
+  --code-punctuation: var(--slime-taupe);
+  --code-tag: var(--slime-rust);
+  --code-important: var(--slime-rust);
+
+  --checkbox-color: var(--slime-green);
+  --checkbox-color-hover: var(--slime-lime);
+  --checkbox-border-color: var(--slime-plate);
+  --checkbox-marker-color: var(--slime-black);
+
+  --hr-color: var(--slime-ash);
+  --table-border-color: var(--slime-ash);
+  --table-header-background: var(--slime-surface);
+
+  --graph-node: var(--slime-green);
+  --graph-node-focused: var(--slime-lime);
+  --graph-line: var(--slime-ash);
+  --graph-node-tag: var(--slime-plate);
+  --graph-node-attachment: var(--slime-amber);
+  --graph-node-unresolved: var(--slime-stone);
+
+  --scrollbar-thumb-bg: var(--slime-ash);
+  --scrollbar-active-thumb-bg: var(--slime-plate);
+}
+
+/* The green plate: h1/h2 sit on an olive underline, like the logo's slime
+   dripping off the letters. */
+.theme-dark .markdown-rendered h1,
+.theme-dark .markdown-rendered h2 {
+  border-bottom: 1px solid var(--slime-plate);
+  padding-bottom: 0.15em;
+}
+
+.theme-dark .markdown-rendered mark {
+  background-color: var(--slime-plate);
+  color: var(--slime-highlight);
+}

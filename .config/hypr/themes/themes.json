@@ -53,5 +53,37 @@
       "vscode": "Monochromator Dark Aquamarine",
       "vim": "quiet"
     }
+  },
+  {
+    "id": "slime",
+    "name": "Slime",
+    "mode": "dark",
+    "accent": "#79932F",
+    "border": "#9DC338",
+    "background": "#1C1B19",
+    "darkBackground": "#060708",
+    "foreground": "#9DC338",
+    "muted": "#676052",
+    "surface1": "#23211E",
+    "surface2": "#403C34",
+    "colors": {
+      "red": "#C2573F",
+      "yellow": "#D4A843",
+      "green": "#79932F",
+      "cyan": "#5E9C8A",
+      "blue": "#6E8FA8",
+      "magenta": "#A0708A"
+    },
+    "bright": {
+      "red": "#D8745A",
+      "yellow": "#E8C46A",
+      "green": "#9DC338",
+      "cyan": "#7FBBA8",
+      "blue": "#8FAEC4",
+      "magenta": "#BD8CA6"
+    },
+    "apps": {
+      "obsidian": "slime"
+    }
   }
 ]
