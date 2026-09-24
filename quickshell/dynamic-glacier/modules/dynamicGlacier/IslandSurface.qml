@@ -9,6 +9,9 @@ Item {
     property string appName: ""
     property string title: ""
     property string body: ""
+    property var alert: null
+    property bool alertPaused: false
+    property string alertFeedback: ""
     property string artist: ""
     property string artUrl: ""
     property string screenshotPath: ""
@@ -232,11 +235,16 @@ Item {
     signal timetableCloseRequested
     signal timerCloseRequested
     signal todoCloseRequested
+    signal panelSwitchRequested(string mode)
     signal themeCloseRequested
     signal reminderCloseRequested
     signal weatherCloseRequested
-    signal reminderFired(string text)
-    signal timerPhaseCompleted(string label)
+    signal panelAlert(var alert)
+    signal alertAction(string id)
+
+    function runAlertAction(source, id) {
+        return islandContent.runAlertAction(source, id);
+    }
     signal btSettingsRequested
     signal seekRequested(real position)
     signal handleStyleRequested(string style)
@@ -465,6 +473,9 @@ Item {
             appName: root.appName
             title: root.title
             body: root.body
+            alert: root.alert
+            alertPaused: root.alertPaused
+            alertFeedback: root.alertFeedback
             artist: root.artist
             artUrl: root.artUrl
             screenshotPath: root.screenshotPath
@@ -600,11 +611,12 @@ Item {
             onTimetableCloseRequested: root.timetableCloseRequested()
             onTimerCloseRequested: root.timerCloseRequested()
             onTodoCloseRequested: root.todoCloseRequested()
+            onPanelSwitchRequested: mode => root.panelSwitchRequested(mode)
             onThemeCloseRequested: root.themeCloseRequested()
             onReminderCloseRequested: root.reminderCloseRequested()
             onWeatherCloseRequested: root.weatherCloseRequested()
-            onReminderFired: text => root.reminderFired(text)
-            onTimerPhaseCompleted: label => root.timerPhaseCompleted(label)
+            onPanelAlert: alert => root.panelAlert(alert)
+            onAlertAction: id => root.alertAction(id)
             onBtSettingsRequested: root.btSettingsRequested()
             onSeekRequested: position => root.seekRequested(position)
             onHandleStyleRequested: style => root.handleStyleRequested(style)

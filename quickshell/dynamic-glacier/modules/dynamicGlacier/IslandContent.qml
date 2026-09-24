@@ -9,6 +9,10 @@ Item {
     property string appName: ""
     property string title: ""
     property string body: ""
+    // A panel's rich alert (see AlertBanner.qml); null for plain notifications.
+    property var alert: null
+    property bool alertPaused: false
+    property string alertFeedback: ""
     property string artist: ""
     property string artUrl: ""
     property string screenshotPath: ""
@@ -253,11 +257,13 @@ Item {
     signal timetableCloseRequested
     signal timerCloseRequested
     signal todoCloseRequested
+    // A panel handing off to another one (To-do → Reminders / Timer).
+    signal panelSwitchRequested(string mode)
     signal themeCloseRequested
     signal reminderCloseRequested
     signal weatherCloseRequested
-    signal reminderFired(string text)
-    signal timerPhaseCompleted(string label)
+    signal panelAlert(var alert)
+    signal alertAction(string id)
     signal powerCloseRequested
     signal powerActionRequested(string action)
     signal clipboardCloseRequested
@@ -1294,8 +1300,7 @@ Item {
         fontFamily: root.fontFamily
         morph: root.timerMorph
         onCloseRequested: root.timerCloseRequested()
-        onSettingsRequested: root.glacierSettingsRequested()
-        onPhaseCompleted: label => root.timerPhaseCompleted(label)
+        onAlertRequested: alert => root.panelAlert(alert)
     }
 
     ReminderPanel {
@@ -1305,8 +1310,7 @@ Item {
         fontFamily: root.fontFamily
         morph: root.reminderMorph
         onCloseRequested: root.reminderCloseRequested()
-        onSettingsRequested: root.glacierSettingsRequested()
-        onReminderFired: text => root.reminderFired(text)
+        onAlertRequested: alert => root.panelAlert(alert)
     }
 
     WeatherPanel {
@@ -1326,7 +1330,14 @@ Item {
         fontFamily: root.fontFamily
         morph: root.todoMorph
         onCloseRequested: root.todoCloseRequested()
-        onSettingsRequested: root.glacierSettingsRequested()
+        onRemindRequested: text => {
+            reminderContent.prefill(text);
+            root.panelSwitchRequested("reminder");
+        }
+        onFocusRequested: text => {
+            timerContent.startFocusOn(text);
+            root.panelSwitchRequested("timer");
+        }
     }
 
     ThemePanel {
@@ -1996,7 +2007,7 @@ Item {
 
         anchors.fill: parent
         spacing: 12
-        opacity: root.mode === "notify" ? 1 : 0
+        opacity: root.mode === "notify" && root.alert === null ? 1 : 0
         visible: opacity > 0
 
         Rectangle {
@@ -2082,6 +2093,26 @@ Item {
                 duration: 210
             }
         }
+    }
+
+    AlertBanner {
+        anchors.fill: parent
+        active: root.mode === "notify" && root.alert !== null
+        alert: root.alert
+        paused: root.alertPaused
+        feedback: root.alertFeedback
+        fontFamily: root.fontFamily
+        onActionTriggered: id => root.alertAction(id)
+    }
+
+    // Banner buttons: hands the action to the panel that raised the alert
+    // and returns what it did.
+    function runAlertAction(source, id) {
+        if (source === "timer")
+            return timerContent.handleAlertAction(id);
+        if (source === "reminder")
+            return reminderContent.handleAlertAction(id);
+        return "";
     }
 
     Rectangle {

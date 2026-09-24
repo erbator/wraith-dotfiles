@@ -176,6 +176,74 @@ Scope {
     readonly property int stripHeight: 4
     readonly property int notifyWidth: 438
     readonly property int notifyHeight: 74
+    readonly property int alertWidth: 480
+    readonly property int alertHeight: 132
+
+    // A panel's rich alert on screen (AlertBanner), and what its last
+    // button press did. Hovering the banner freezes its timeout.
+    property var alert: null
+    property string alertFeedback: ""
+    property real alertDeadline: 0
+    property real alertRemaining: 0
+    readonly property bool alertHovered: root.mode === "notify" && root.alert !== null && islandHitbox.containsMouse
+
+    onAlertHoveredChanged: {
+        if (root.mode !== "notify" || root.alert === null)
+            return;
+        if (root.alertHovered) {
+            root.alertRemaining = Math.max(0, root.alertDeadline - Date.now());
+            collapseTimer.stop();
+        } else {
+            const ms = Math.max(1500, root.alertRemaining);
+            root.alertDeadline = Date.now() + ms;
+            root.hold(ms);
+        }
+    }
+
+    function showAlert(alert) {
+        root.appName = alert.kicker || "";
+        root.title = alert.title || "";
+        root.body = alert.body || "";
+        root.artUrl = "";
+        root.alertFeedback = "";
+        root.alert = alert;
+        root.mode = "notify";
+        panelFocusGrab.active = false;
+        const ms = alert.timeout > 0 ? alert.timeout : 9000;
+        root.alertDeadline = Date.now() + ms;
+        if (!root.alertHovered)
+            root.hold(ms);
+        else
+            root.alertRemaining = ms;
+        root.playAlertSound();
+    }
+
+    function handleAlertAction(id) {
+        const alert = root.alert;
+        if (!alert)
+            return;
+        if (id === "dismiss") {
+            root.showIdle();
+            return;
+        }
+        if (id === "open") {
+            if (alert.source === "timer")
+                root.toggleTimerPanel();
+            else if (alert.source === "reminder")
+                root.toggleReminderPanel();
+            return;
+        }
+        const feedback = island.runAlertAction(alert.source, id);
+        if (!feedback) {
+            root.showIdle();
+            return;
+        }
+        root.alertFeedback = feedback;
+        root.alertRemaining = 1800;
+        root.alertDeadline = Date.now() + 1800;
+        if (!root.alertHovered)
+            root.hold(1800);
+    }
     readonly property int screenshotWidth: 220
     readonly property int screenshotHeight: 140
     readonly property int mediaWidth: 400
@@ -214,18 +282,18 @@ Scope {
     readonly property int timetableWidth: 420
     readonly property int timetableMinHeight: 132
     readonly property int timetableMaxPanelHeight: 470
-    readonly property int timerWidth: 340
+    readonly property int timerWidth: 460
     readonly property int timerMinHeight: 132
-    readonly property int timerMaxPanelHeight: 260
-    readonly property int todoWidth: 360
+    readonly property int timerMaxPanelHeight: 400
+    readonly property int todoWidth: 520
     readonly property int todoMinHeight: 132
-    readonly property int todoMaxPanelHeight: 300
+    readonly property int todoMaxPanelHeight: 520
     readonly property int themeWidth: 580
     readonly property int themeMinHeight: 132
     readonly property int themeMaxPanelHeight: 440
-    readonly property int reminderWidth: 380
+    readonly property int reminderWidth: 480
     readonly property int reminderMinHeight: 132
-    readonly property int reminderMaxPanelHeight: 400
+    readonly property int reminderMaxPanelHeight: 470
     readonly property int weatherWidth: 400
     readonly property int weatherMinHeight: 132
     readonly property int weatherMaxPanelHeight: 590
@@ -416,7 +484,7 @@ Scope {
     function targetWidth() {
         switch (root.visualMode) {
         case "notify":
-            return root.notifyWidth;
+            return root.alert !== null ? root.alertWidth : root.notifyWidth;
         case "screenshot":
             return root.screenshotWidth;
         case "media":
@@ -463,7 +531,7 @@ Scope {
     function targetHeight() {
         switch (root.visualMode) {
         case "notify":
-            return root.notifyHeight;
+            return root.alert !== null ? root.alertHeight : root.notifyHeight;
         case "screenshot":
             return root.screenshotHeight;
         case "media":
@@ -580,6 +648,8 @@ Scope {
 
         collapseTimer.stop();
         root.mode = "idle";
+        root.alert = null;
+        root.alertFeedback = "";
         root.pinnedOpen = false;
         panelFocusGrab.active = false;
         if (!keepExitPreview)
@@ -611,6 +681,17 @@ Scope {
     }
 
     function closePanelToWideIdle(panelWidth) {
+        // The wide peek only makes sense under the pointer, where leaving it
+        // collapses it. Closed from the keyboard (Esc, the keybind) with the
+        // pointer elsewhere, nothing would ever collapse it: a 460px block
+        // sat over the windows below, eating clicks and — being OnDemand —
+        // taking the keyboard from whatever you clicked next.
+        if (!islandHitbox.containsMouse) {
+            root.pointerInside = false;
+            root.showIdle();
+            return;
+        }
+
         root.exitPreviewWidth = Math.max(root.peekWidth, panelWidth);
         root.exitPreviewActive = true;
         root.pointerInside = true;
@@ -734,6 +815,7 @@ Scope {
         root.title = summary || "New notification";
         root.body = message || "";
         root.artUrl = "";
+        root.alert = null;
         root.mode = "notify";
         // The banner replaces whatever keyboard panel was open, but the grab
         // that panel took stayed held for the banner's whole duration — up to
@@ -2882,6 +2964,9 @@ Scope {
                 appName: root.appName
                 title: root.title
                 body: root.body
+                alert: root.alert
+                alertPaused: root.alertHovered
+                alertFeedback: root.alertFeedback
                 artist: root.artist
                 artUrl: root.artUrl
                 screenshotPath: root.screenshotPath
@@ -3022,17 +3107,17 @@ Scope {
                 onTimetableCloseRequested: root.closePanelToWideIdle(root.timetableWidth)
                 onTimerCloseRequested: root.closePanelToWideIdle(root.timerWidth)
                 onTodoCloseRequested: root.closePanelToWideIdle(root.todoWidth)
+                onPanelSwitchRequested: mode => {
+                    if (mode === "reminder" && root.mode !== "reminder")
+                        root.toggleReminderPanel();
+                    else if (mode === "timer" && root.mode !== "timer")
+                        root.toggleTimerPanel();
+                }
                 onThemeCloseRequested: root.closePanelToWideIdle(root.themeWidth)
                 onReminderCloseRequested: root.closePanelToWideIdle(root.reminderWidth)
                 onWeatherCloseRequested: root.closePanelToWideIdle(root.weatherWidth)
-                onReminderFired: text => {
-                    root.showNotification("Reminder", text, "Reminders", 8000);
-                    root.playAlertSound();
-                }
-                onTimerPhaseCompleted: label => {
-                    root.showNotification(label, "", "Timer", 6200);
-                    root.playAlertSound();
-                }
+                onPanelAlert: alert => root.showAlert(alert)
+                onAlertAction: id => root.handleAlertAction(id)
                 onBtSettingsRequested: root.toggleBluetoothPanel()
                 onSeekRequested: position => root.mediaSeek(position)
                 onHandleStyleRequested: style => root.setHandleStyle(style)
@@ -3189,7 +3274,9 @@ Scope {
                 width: island.width
                 height: root.mode === "idle" && !root.interactionOpen ? Math.max(root.reservedZone, island.height) : island.height
                 hoverEnabled: true
-                acceptedButtons: root.visualMode === "media" || root.isDetailPanel(root.visualMode) || root.interactionOpen ? Qt.NoButton : Qt.LeftButton
+                // A rich alert has its own buttons; the hitbox must not eat
+                // their clicks (it would dismiss the banner instead).
+                acceptedButtons: root.visualMode === "media" || root.isDetailPanel(root.visualMode) || root.interactionOpen || (root.visualMode === "notify" && root.alert !== null) ? Qt.NoButton : Qt.LeftButton
                 cursorShape: Qt.PointingHandCursor
                 onEntered: root.keepInteractionOpen(true)
                 onPositionChanged: mouse => root.maybeFinishExitPreview(mouse.x, width)
@@ -3245,6 +3332,17 @@ Scope {
 
         function idle(): void {
             root.showIdle();
+        }
+
+        // Presses the Nth button on a panel alert banner (0 = leftmost);
+        // -1 presses its primary one. Handy for a keybind.
+        function alertAction(index: int): void {
+            if (root.mode !== "notify" || root.alert === null)
+                return;
+            const actions = root.alert.actions || [];
+            const action = index < 0 ? actions.find(a => a.primary) : actions[index];
+            if (action)
+                root.handleAlertAction(action.id);
         }
 
         function toggleOpen(): void {
