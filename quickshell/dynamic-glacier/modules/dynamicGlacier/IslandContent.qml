@@ -1895,39 +1895,6 @@ Item {
                         font.weight: Font.DemiBold
                     }
 
-                    Text {
-                        text: root.timeText
-                        color: "#f0f0f0"
-                        visible: root.timeText !== ""
-                        font.family: root.fontFamily
-                        font.pixelSize: 15
-                        font.weight: Font.Bold
-                    }
-
-                    Rectangle {
-                        Layout.preferredWidth: 20
-                        Layout.preferredHeight: 20
-                        radius: 10
-                        color: dismissMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
-                        border.width: 1
-                        border.color: "#232323"
-
-                        MIcon {
-                            anchors.centerIn: parent
-                            name: "close"
-                            size: 12
-                            color: "#999999"
-                        }
-
-                        MouseArea {
-                            id: dismissMouse
-
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.dismissRequested()
-                        }
-                    }
                 }
 
                 Text {
