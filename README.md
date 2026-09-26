@@ -103,7 +103,7 @@ fetched from upstream, not included here).
 
 Big thanks to [mavxa](https://github.com/mavxa) for
 [DynamicGlacier](https://github.com/mavxa/DynamicGlacier). The island started
-out as that project and I've been hacking on it ever since, so none of this
+out as that project and I've been modding it ever since, so none of this
 would exist without it.
 
 And thanks to [Andreu Massanet](https://github.com/andreumassanet) for
