@@ -164,15 +164,7 @@ Item {
     property string performanceDegraded: ""
     property string performanceInhibited: ""
 
-    property var favoriteAppEntries: []
     property var favoriteAppIds: []
-    property var appsPickerEntries: []
-    property bool appsPickerOpen: false
-    property string appsSearchDraft: ""
-    property string appsStatusText: ""
-    property int appsFavoriteSlots: 8
-    property int appsFavoriteHighlightIndex: 0
-    property int appsPickerHighlightIndex: 0
 
 
 
@@ -208,14 +200,6 @@ Item {
     signal settingsResetRequested
     signal appsSettingsRequested
     signal appsCloseRequested
-    signal appsPickerToggleRequested
-    signal appsSearchChanged(string text)
-    signal appsSearchAccepted
-    signal appsPickerNavRequested(int delta)
-    signal appsFavoriteNavRequested(int dx, int dy)
-    signal appsFavoriteActivateRequested
-    signal appsFavoriteToggleRequested(string id)
-    signal appsLaunchRequested(string id)
     signal wallpaperCloseRequested
     signal calcCloseRequested
     signal powerCloseRequested
@@ -532,15 +516,7 @@ Item {
             wifiPasswordDraft: root.wifiPasswordDraft
             wifiStatusText: root.wifiStatusText
             wifiConnecting: root.wifiConnecting
-            favoriteAppEntries: root.favoriteAppEntries
             favoriteAppIds: root.favoriteAppIds
-            appsPickerEntries: root.appsPickerEntries
-            appsPickerOpen: root.appsPickerOpen
-            appsSearchDraft: root.appsSearchDraft
-            appsStatusText: root.appsStatusText
-            appsFavoriteSlots: root.appsFavoriteSlots
-            appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
-            appsPickerHighlightIndex: root.appsPickerHighlightIndex
             onPreviousRequested: root.previousRequested()
             onPlayPauseRequested: root.playPauseRequested()
             onNextRequested: root.nextRequested()
@@ -573,14 +549,6 @@ Item {
             onSettingsResetRequested: root.settingsResetRequested()
             onAppsSettingsRequested: root.appsSettingsRequested()
             onAppsCloseRequested: root.appsCloseRequested()
-            onAppsPickerToggleRequested: root.appsPickerToggleRequested()
-            onAppsSearchChanged: text => root.appsSearchChanged(text)
-            onAppsSearchAccepted: root.appsSearchAccepted()
-            onAppsPickerNavRequested: delta => root.appsPickerNavRequested(delta)
-            onAppsFavoriteNavRequested: (dx, dy) => root.appsFavoriteNavRequested(dx, dy)
-            onAppsFavoriteActivateRequested: root.appsFavoriteActivateRequested()
-            onAppsFavoriteToggleRequested: id => root.appsFavoriteToggleRequested(id)
-            onAppsLaunchRequested: id => root.appsLaunchRequested(id)
             onWallpaperCloseRequested: root.wallpaperCloseRequested()
             onCalcCloseRequested: root.calcCloseRequested()
             onPowerCloseRequested: root.powerCloseRequested()

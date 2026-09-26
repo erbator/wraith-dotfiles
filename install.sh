@@ -66,7 +66,7 @@ confirm() {
 # The session and everything the shell, keybinds and helper scripts call.
 CORE_PACKAGES=(
     # Compositor and session
-    hyprland uwsm xdg-desktop-portal xdg-desktop-portal-gtk
+    hyprland hyprpm uwsm xdg-desktop-portal xdg-desktop-portal-gtk
     qt6-wayland qt6-declarative polkit
     # The Quickshell bar/island itself
     quickshell

@@ -263,15 +263,15 @@ Scope {
     readonly property int settingsWidth: 500
     readonly property int settingsMinHeight: 132
     readonly property int settingsMaxPanelHeight: 600
-    readonly property int appsWidth: 340
+    readonly property int appsWidth: 440
     readonly property int appsMinHeight: 132
     readonly property int appsMaxPanelHeight: 470
     readonly property int wallpaperWidth: 780
     readonly property int wallpaperMinHeight: 132
     readonly property int wallpaperMaxPanelHeight: 540
-    readonly property int calcWidth: 360
+    readonly property int calcWidth: 560
     readonly property int calcMinHeight: 132
-    readonly property int calcMaxPanelHeight: 230
+    readonly property int calcMaxPanelHeight: 470
     readonly property int powerWidth: 380
     readonly property int powerMinHeight: 132
     readonly property int powerMaxPanelHeight: 210
@@ -445,23 +445,11 @@ Scope {
     property string performanceInhibited: ""
 
     // App favorites dock (morphs the island into mode "apps")
-    readonly property int appsFavoriteSlots: 8
-    readonly property int appsGridColumns: 4
     readonly property string favoritesPath: Quickshell.statePath("favorites.json")
     readonly property string visualSettingsPath: Quickshell.statePath("settings.json")
     readonly property string favoritesDir: root.parentDirectory(root.favoritesPath)
+    // Read for the peek's "N pinned"; AppsPanel owns and writes the list.
     property var favoriteAppIds: []
-    property bool appsPickerOpen: false
-    property string appsSearchDraft: ""
-    property string appsStatusText: ""
-    // Arrow-key navigation: which favorite tile / search row is highlighted.
-    property int appsFavoriteHighlightIndex: 0
-    property int appsPickerHighlightIndex: 0
-    // Every installed launcher entry, name-sorted, with its icon already resolved.
-    readonly property var appEntries: root.buildAppEntries()
-    readonly property var appsPickerEntries: root.filterAppEntries()
-    // Always appsFavoriteSlots long, so the grid can render empty slots as "add here".
-    readonly property var favoriteAppEntries: root.buildFavoriteEntries()
 
     function targetWidth() {
         switch (root.visualMode) {
@@ -638,12 +626,6 @@ Scope {
             root.exitPreviewActive = false;
         root.title = "Ready";
         root.body = "Waiting for a signal";
-        // The picker owns the only focused text field in the island. Leaving it
-        // flagged open while the island collapses would keep a hidden TextInput
-        // holding the keyboard.
-        root.appsPickerOpen = false;
-        root.appsSearchDraft = "";
-        root.appsStatusText = "";
         root.wifiExpandedSsid = "";
         root.wifiPasswordDraft = "";
         root.wifiStatusText = "";
@@ -1124,10 +1106,22 @@ Scope {
         return root.nodeHasType(node, PwNodeType.VideoSource) || (root.nodeHasType(node, PwNodeType.Video) && root.nodeHasType(node, PwNodeType.Source)) || text.indexOf("video/source") !== -1 || text.indexOf("video source") !== -1 || text.indexOf("v4l2") !== -1 || text.indexOf("camera") !== -1;
     }
 
+    // Only real capture devices count. The old word match ("mic", "input")
+    // also caught recording *streams* — `Stream/Input/Audio` contains "input" —
+    // so anything recording the speaker monitor (cava drawing a spectrum of
+    // the music) lit the microphone dot with the mic untouched.
     function nodeLooksLikeMicrophoneSource(node) {
-        const text = root.nodePropertyText(node);
+        if (!node)
+            return false;
 
-        return root.nodeHasType(node, PwNodeType.AudioSource) || (root.nodeHasType(node, PwNodeType.Audio) && root.nodeHasType(node, PwNodeType.Source)) || text.indexOf("audio/source") !== -1 || text.indexOf("audio source") !== -1 || text.indexOf("alsa_input") !== -1 || root.textHasAny(text, ["microphone", "mic", "input"]);
+        const properties = node.properties ?? {};
+        const mediaClass = String(properties["media.class"] ?? "").toLowerCase();
+        const name = String(properties["node.name"] ?? node.name ?? "").toLowerCase();
+
+        if (mediaClass.startsWith("stream/") || mediaClass.indexOf("sink") !== -1 || name.endsWith(".monitor") || root.nodeHasType(node, PwNodeType.AudioSink) || root.nodeHasType(node, PwNodeType.AudioInStream) || root.nodeHasType(node, PwNodeType.AudioOutStream))
+            return false;
+
+        return root.nodeHasType(node, PwNodeType.AudioSource) || mediaClass === "audio/source" || mediaClass === "audio/source/virtual" || name.startsWith("alsa_input") || name.startsWith("bluez_input") || root.nodePropertyText(node).indexOf("microphone") !== -1;
     }
 
     function nodeLooksLikeAudioInputStream(node) {
@@ -1685,97 +1679,6 @@ Scope {
         return separator > 0 ? path.slice(0, separator) : ".";
     }
 
-    // `check` makes a missing icon resolve to "" instead of a broken image URL,
-    // so the tile falls through to its glyph placeholder without a load warning.
-    function appIconSource(iconName) {
-        if (iconName === "")
-            return "";
-
-        return Quickshell.iconPath(iconName, true);
-    }
-
-    function buildAppEntries() {
-        const entries = DesktopEntries.applications?.values ?? [];
-        const list = [];
-
-        for (let i = 0; i < entries.length; i += 1) {
-            const entry = entries[i];
-
-            if (!entry || entry.noDisplay)
-                continue;
-
-            list.push({
-                id: entry.id,
-                name: entry.name || entry.id,
-                iconSource: root.appIconSource(entry.icon || "")
-            });
-        }
-
-        list.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
-        return list;
-    }
-
-    function filterAppEntries() {
-        const query = root.appsSearchDraft.trim().toLowerCase();
-
-        if (query === "")
-            return root.appEntries;
-
-        return root.appEntries.filter(entry => entry.name.toLowerCase().indexOf(query) !== -1 || entry.id.toLowerCase().indexOf(query) !== -1);
-    }
-
-    function findAppEntry(id) {
-        const entries = root.appEntries;
-
-        for (let i = 0; i < entries.length; i += 1) {
-            if (entries[i].id === id)
-                return entries[i];
-        }
-
-        return null;
-    }
-
-    // Pads the saved id list out to a fixed slot count so the grid always draws
-    // 4x2. Slots the user has not filled come back with `filled: false`.
-    function buildFavoriteEntries() {
-        const slots = [];
-        // Read up front rather than only inside the filled branch below. QML
-        // captures binding dependencies from the properties an evaluation
-        // actually touches, so with an empty dock this never looked at
-        // appEntries and the grid would not refresh when the desktop entries
-        // finished loading after favorites.json.
-        const entries = root.appEntries;
-
-        for (let i = 0; i < root.appsFavoriteSlots; i += 1) {
-            const id = root.favoriteAppIds[i];
-
-            if (!id) {
-                slots.push({
-                    filled: false,
-                    id: "",
-                    name: "",
-                    iconSource: ""
-                });
-                continue;
-            }
-
-            const entry = root.findAppEntry(id);
-
-            slots.push({
-                filled: true,
-                id: id,
-                name: entry ? entry.name : id,
-                iconSource: entry ? entry.iconSource : root.appIconSource("")
-            });
-        }
-
-        return slots;
-    }
-
-    function isFavoriteApp(id) {
-        return root.favoriteAppIds.indexOf(id) !== -1;
-    }
-
     // Morphs the island into the favorites dock, or collapses it back to idle
     // if it is already showing.
     function toggleAppsPanel() {
@@ -1787,18 +1690,7 @@ Scope {
         collapseTimer.stop();
         root.exitPreviewActive = false;
         root.mode = "apps";
-        root.appsPickerOpen = false;
-        root.appsSearchDraft = "";
-        root.appsStatusText = "";
-        root.appsFavoriteHighlightIndex = 0;
         panelFocusGrab.active = true;
-    }
-
-    function toggleAppsPicker() {
-        root.appsPickerOpen = !root.appsPickerOpen;
-        root.appsSearchDraft = "";
-        root.appsStatusText = "";
-        root.appsPickerHighlightIndex = 0;
     }
 
     // Morphs the island into the wallpaper switcher, or collapses it back to
@@ -1988,88 +1880,11 @@ Scope {
         workspaceIndicatorTimer.restart();
     }
 
-    function toggleFavoriteApp(id) {
-        if (id === "")
-            return;
-
-        const list = root.favoriteAppIds.slice();
-        const index = list.indexOf(id);
-
-        if (index !== -1) {
-            list.splice(index, 1);
-        } else if (list.length >= root.appsFavoriteSlots) {
-            root.appsStatusText = "All " + root.appsFavoriteSlots + " slots are full";
-            appsStatusTimer.restart();
-            return;
-        } else {
-            list.push(id);
-        }
-
-        root.appsStatusText = "";
-        root.favoriteAppIds = list;
-        root.saveFavorites();
-    }
-
-    function launchFavoriteApp(id) {
-        const entry = DesktopEntries.byId(id);
-
-        if (!entry)
-            return;
-
-        entry.execute();
-        root.showIdle();
-    }
-
     function clampIndex(value, length) {
         if (length <= 0)
             return 0;
 
         return Math.max(0, Math.min(length - 1, value));
-    }
-
-    // Arrow keys in the search field move this; Enter launches whichever row
-    // is highlighted, so the picker doubles as a keyboard launcher.
-    function moveAppsPickerHighlight(delta) {
-        root.appsPickerHighlightIndex = root.clampIndex(root.appsPickerHighlightIndex + delta, root.appsPickerEntries.length);
-    }
-
-    function launchHighlightedSearchMatch() {
-        const entries = root.appsPickerEntries;
-
-        if (!root.appsPickerOpen || entries.length === 0)
-            return;
-
-        const entry = entries[root.clampIndex(root.appsPickerHighlightIndex, entries.length)];
-
-        if (entry)
-            root.launchFavoriteApp(entry.id);
-    }
-
-    // Arrow keys over the favorites grid, wrapped at the row/column bounds
-    // rather than jumping to the next row, so up/down/left/right stays
-    // predictable at the edges.
-    function moveAppsFavoriteHighlight(dx, dy) {
-        const columns = root.appsGridColumns;
-        const count = root.appsFavoriteSlots;
-        const rows = Math.ceil(count / columns);
-        const col = Math.max(0, Math.min(columns - 1, (root.appsFavoriteHighlightIndex % columns) + dx));
-        const row = Math.max(0, Math.min(rows - 1, Math.floor(root.appsFavoriteHighlightIndex / columns) + dy));
-
-        root.appsFavoriteHighlightIndex = root.clampIndex(row * columns + col, count);
-    }
-
-    // Enter/Return over the favorites grid: launch a filled tile, or open the
-    // picker to fill an empty one.
-    function activateAppsFavoriteHighlight() {
-        const entry = root.favoriteAppEntries[root.appsFavoriteHighlightIndex];
-
-        if (!entry)
-            return;
-
-        if (entry.filled)
-            root.launchFavoriteApp(entry.id);
-        else
-            root.toggleAppsPicker();
     }
 
     function applyFavoritesJson(text) {
@@ -2079,7 +1894,7 @@ Scope {
             if (!Array.isArray(parsed))
                 return;
 
-            root.favoriteAppIds = parsed.filter(id => typeof id === "string" && id !== "").slice(0, root.appsFavoriteSlots);
+            root.favoriteAppIds = parsed.filter(id => typeof id === "string" && id !== "");
         } catch (error) {
         // No saved favorites yet, or the file was hand-edited into something
         // unparseable — either way, start from an empty dock.
@@ -2133,10 +1948,6 @@ Scope {
             idleHeight: root.peekHeight,
             fontFamily: root.fontFamily
         }, null, 2) + "\n");
-    }
-
-    function saveFavorites() {
-        favoritesFile.setText(JSON.stringify(root.favoriteAppIds));
     }
 
     Process {
@@ -2515,13 +2326,6 @@ Scope {
         }
     }
 
-    Timer {
-        id: appsStatusTimer
-
-        interval: 2400
-        repeat: false
-        onTriggered: root.appsStatusText = ""
-    }
 
     // The shell state dir usually exists already, but setText() will not create it
     // on a first run, so make sure of it before anything tries to save.
@@ -2537,8 +2341,10 @@ Scope {
 
         path: root.favoritesPath
         preload: true
+        watchChanges: true
         printErrors: false
         onLoaded: root.applyFavoritesJson(favoritesFile.text())
+        onFileChanged: favoritesFile.reload()
     }
 
     FileView {
@@ -2816,15 +2622,7 @@ Scope {
                 wifiStatusText: root.wifiStatusText
                 wifiConnecting: root.wifiConnecting
                 appsMaxPanelHeight: root.appsMaxPanelHeight
-                favoriteAppEntries: root.favoriteAppEntries
                 favoriteAppIds: root.favoriteAppIds
-                appsPickerEntries: root.appsPickerEntries
-                appsPickerOpen: root.appsPickerOpen
-                appsSearchDraft: root.appsSearchDraft
-                appsStatusText: root.appsStatusText
-                appsFavoriteSlots: root.appsFavoriteSlots
-                appsFavoriteHighlightIndex: root.appsFavoriteHighlightIndex
-                appsPickerHighlightIndex: root.appsPickerHighlightIndex
                 onPreviousRequested: root.mediaPrevious()
                 onPlayPauseRequested: root.mediaTogglePlaying()
                 onNextRequested: root.mediaNext()
@@ -2857,17 +2655,6 @@ Scope {
                 onIdleHeightRequested: height => root.setIdleHeight(height)
                 onSettingsResetRequested: root.resetVisualSettings()
                 onAppsCloseRequested: root.closePanelToWideIdle(root.appsWidth)
-                onAppsPickerToggleRequested: root.toggleAppsPicker()
-                onAppsSearchChanged: text => {
-                    root.appsSearchDraft = text;
-                    root.appsPickerHighlightIndex = 0;
-                }
-                onAppsSearchAccepted: root.launchHighlightedSearchMatch()
-                onAppsPickerNavRequested: delta => root.moveAppsPickerHighlight(delta)
-                onAppsFavoriteNavRequested: (dx, dy) => root.moveAppsFavoriteHighlight(dx, dy)
-                onAppsFavoriteActivateRequested: root.activateAppsFavoriteHighlight()
-                onAppsFavoriteToggleRequested: id => root.toggleFavoriteApp(id)
-                onAppsLaunchRequested: id => root.launchFavoriteApp(id)
                 onWallpaperCloseRequested: root.closePanelToWideIdle(root.wallpaperWidth)
                 onCalcCloseRequested: root.closePanelToWideIdle(root.calcWidth)
                 onPowerCloseRequested: root.closePanelToWideIdle(root.powerWidth)
@@ -2877,10 +2664,11 @@ Scope {
                 onTimerCloseRequested: root.closePanelToWideIdle(root.timerWidth)
                 onTodoCloseRequested: root.closePanelToWideIdle(root.todoWidth)
                 onPanelSwitchRequested: mode => {
-                    if (mode === "reminder" && root.mode !== "reminder")
-                        root.toggleReminderPanel();
-                    else if (mode === "timer" && root.mode !== "timer")
-                        root.toggleTimerPanel();
+                    if (root.mode === mode)
+                        return;
+                    const open = { reminder: root.toggleReminderPanel, timer: root.toggleTimerPanel, timetable: root.toggleTimetablePanel, todo: root.toggleTodoPanel, weather: root.toggleWeatherPanel }[mode];
+                    if (open)
+                        open();
                 }
                 onThemeCloseRequested: root.closePanelToWideIdle(root.themeWidth)
                 onReminderCloseRequested: root.closePanelToWideIdle(root.reminderWidth)
