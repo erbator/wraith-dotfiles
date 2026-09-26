@@ -85,6 +85,20 @@ and welcome-screen state), and anything holding credentials or personal data (e.
 Spicetify auth, VSCodium workspace storage, `.ssh`, shell history) are left
 out on purpose since this repo is public.
 
+## License
+
+Copyright (C) 2026 Legfena. This repository is free software under the
+**GNU General Public License v3.0** — see [`LICENSE`](LICENSE). You may use,
+change and share it; if you share a modified version, it has to stay under
+the GPL too.
+
+Parts that come from other projects keep their own terms:
+`quickshell/dynamic-glacier/` is built on [DynamicGlacier](https://github.com/mavxa/DynamicGlacier)
+(MIT, © mavxa — its notice is kept in `quickshell/dynamic-glacier/LICENSE`),
+and the widgets `extras/impasto-desktop/` installs are
+[impasto](https://github.com/andreumassanet/impasto)'s own code (GPL-3.0,
+fetched from upstream, not included here).
+
 ## Credits
 
 This setup stands on two projects, and a huge thank-you goes to both of them.
