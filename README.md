@@ -101,22 +101,12 @@ fetched from upstream, not included here).
 
 ## Credits
 
-This setup stands on two projects, and a huge thank-you goes to both of them.
+Big thanks to [mavxa](https://github.com/mavxa) for
+[DynamicGlacier](https://github.com/mavxa/DynamicGlacier). The island started
+out as that project and I've been hacking on it ever since, so none of this
+would exist without it.
 
-**[DynamicGlacier](https://github.com/mavxa/DynamicGlacier) by mavxa**, the
-dynamic-island shell for Hyprland that `quickshell/dynamic-glacier/` grew out
-of. The island itself, its morphing surface and the idea of every panel living
-inside it all come from there; everything in this repo is built on that base.
-Thank you, mavxa, for making it and sharing it. MIT-licensed; its licence is
-kept in `quickshell/dynamic-glacier/LICENSE`.
-
-**[impasto](https://github.com/andreumassanet/impasto) by Andreu Massanet**, a
-whole Hyprland shell whose palette comes from a painting. The desktop widgets
-that `extras/impasto-desktop/` installs (the clock, weather, calendar, media,
-stats and the rest, in both their Modern and Analogue looks) are entirely its
-work; the installer only runs them next to the island without touching
-anything else. Thank you, Andreu, for such a beautifully made project.
-GPL-3.0; its code is fetched from upstream at install time, not copied here,
-and its licence goes with the installed copy.
-
-If you like what you see here, go star them.
+And thanks to [Andreu Massanet](https://github.com/andreumassanet) for
+[impasto](https://github.com/andreumassanet/impasto). The desktop widgets come
+straight from there, I just run them next to my island. The whole setup is
+gorgeous, go check it out.
