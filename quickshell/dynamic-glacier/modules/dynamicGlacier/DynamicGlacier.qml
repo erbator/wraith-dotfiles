@@ -246,8 +246,8 @@ Scope {
     }
     readonly property int screenshotWidth: 220
     readonly property int screenshotHeight: 140
-    readonly property int mediaWidth: 400
-    readonly property int mediaHeight: root.hasSyncedLyrics ? 236 : 132
+    readonly property int mediaWidth: 440
+    readonly property int mediaHeight: root.hasSyncedLyrics ? 248 : 132
     readonly property int volumeWidth: 244
     readonly property int volumeHeight: 48
     readonly property int wifiWidth: 500
@@ -1835,7 +1835,7 @@ Scope {
     function performPowerAction(action) {
         switch (action) {
         case "lock":
-            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/share/quickshell-lockscreen/lock.sh"]);
+            Quickshell.execDetached(["sh", "-c", "pidof hyprlock || hyprlock"]);
             break;
         case "logout":
             Quickshell.execDetached(["uwsm", "stop"]);
@@ -2021,8 +2021,10 @@ Scope {
     // for free, and microphoneActive ORs the two together anyway. Cameras still
     // need the fallback because an app that opens /dev/video0 directly, rather
     // than through the portal, never shows up as a Pipewire node.
+    // 8 s, not 3: `fuser` walks every process's open files (~20 ms of CPU
+    // a go) and each run wakes the CPU from idle.
     Timer {
-        interval: 3000
+        interval: 8000
         repeat: true
         running: root.liveLinksEnabled && !root.privacyDebugEnabled
         triggeredOnStart: true
@@ -2395,8 +2397,10 @@ Scope {
         }
     }
 
+    // The SSID/signal in the peek can be 10 s stale; the Wi-Fi panel rescans
+    // the moment it opens.
     Timer {
-        interval: 3000
+        interval: 10000
         repeat: true
         running: root.liveLinksEnabled
         triggeredOnStart: true
@@ -2495,11 +2499,14 @@ Scope {
         // Exclusive would hold it for as long as the bar is mapped, i.e. always.
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
 
+        // Only as wide as the widest panel (plus the concave corners and the
+        // trays), centred, rather than the whole screen: Qt redraws the entire
+        // surface every animation frame, and a full-width 1920px one more than
+        // doubled the fill work of every morph on this iGPU.
         anchors {
             top: true
-            left: true
-            right: true
         }
+        implicitWidth: Math.max(root.wallpaperWidth, root.clipboardWidth, root.themeWidth, root.calcWidth, root.timetableWidth, root.todoWidth, root.wifiWidth, root.alertWidth) + 120
 
         mask: Region {
             item: interactionMask
@@ -2537,6 +2544,7 @@ Scope {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: root.targetY()
                 targetW: root.targetWidth()
+                panelWidths: ({ bluetooth: root.btWidth, battery: root.batteryWidth, settings: root.settingsWidth, wallpaper: root.wallpaperWidth, calc: root.calcWidth, timetable: root.timetableWidth, timer: root.timerWidth, reminder: root.reminderWidth, weather: root.weatherWidth, todo: root.todoWidth, theme: root.themeWidth, power: root.powerWidth, clipboard: root.clipboardWidth, apps: root.appsWidth })
                 targetH: root.targetHeight()
                 wifiMaxPanelHeight: root.wifiMaxPanelHeight
                 btMaxPanelHeight: root.btMaxPanelHeight

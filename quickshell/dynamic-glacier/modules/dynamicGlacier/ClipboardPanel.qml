@@ -529,6 +529,39 @@ Item {
     scale: 0.94 + 0.06 * root.panelProgress
     transformOrigin: Item.Top
 
+    // Keyboard focus goes to the text field once the island has finished
+    // opening. Taken mid-morph, Hyprland held back the surface's frame
+    // callbacks for ~300 ms and the opening animation froze halfway.
+    Timer {
+        id: focusAfterOpen
+
+        interval: 360
+        onTriggered: {
+            if (!root.visible)
+                return;
+            searchInput.forceActiveFocus();
+            if (root.typedEarly !== "") {
+                searchInput.insert(searchInput.cursorPosition, root.typedEarly);
+                root.typedEarly = "";
+                searchInput.textEdited();
+            }
+        }
+    }
+
+    // Until then the panel itself holds the keyboard: what's typed in the
+    // first moments is kept and handed to the field, and Esc still closes.
+    property string typedEarly: ""
+
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Escape) {
+            root.closeRequested();
+            event.accepted = true;
+        } else if (event.text !== "" && event.text.charCodeAt(0) >= 32 && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+            root.typedEarly += event.text;
+            event.accepted = true;
+        }
+    }
+
     onVisibleChanged: {
         if (root.visible) {
             searchInput.text = "";
@@ -540,7 +573,9 @@ Item {
             Quickshell.execDetached(["mkdir", "-p", root.pinsDir]);
             scanProc.running = false;
             scanProc.running = true;
-            searchInput.forceActiveFocus();
+            root.typedEarly = "";
+            root.forceActiveFocus();
+            focusAfterOpen.restart();
         }
     }
 

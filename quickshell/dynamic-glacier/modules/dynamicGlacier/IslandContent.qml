@@ -135,6 +135,11 @@ Item {
     property real timetableMorph: 0
     readonly property real timetableContentHeight: timetableContent.contentHeight
 
+    // Each panel's final width, from DynamicGlacier. Panels are laid out at
+    // this size once instead of following the island's width and height on
+    // every animation frame — with all of them anchored to fill the island,
+    // every morph frame re-laid-out all fourteen, hidden ones included.
+    property var panelWidths: ({})
     property real timerMorph: 0
     readonly property real timerContentHeight: timerContent.contentHeight
 
@@ -414,6 +419,11 @@ Item {
                     if (!clockLabel.marqueeActive)
                         clockLabel.x = 0;
                 }
+                onTextChanged: {
+                    clockLabel.x = 0;
+                    if (clockLabel.marqueeActive)
+                        marqueeScroll.restart();
+                }
 
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.horizontalCenter: root.mediaAvailable ? undefined : clockOrTitleViewport.horizontalCenter
@@ -436,9 +446,14 @@ Item {
                     NumberAnimation { duration: 240; easing.type: Easing.OutBack; easing.overshoot: 2.4 }
                 }
 
+                // Two passes per title, then it rests at the start: looping for
+                // the whole song kept the island redrawing 60 times a second
+                // for as long as music played. A new title scrolls again.
                 SequentialAnimation {
+                    id: marqueeScroll
+
                     running: clockLabel.marqueeActive
-                    loops: Animation.Infinite
+                    loops: 2
 
                     PauseAnimation { duration: 1100 }
                     NumberAnimation {
@@ -1136,7 +1151,12 @@ Item {
     BluetoothPanel {
         id: btContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.bluetooth || parent.width
+        height: btContent.contentHeight
         radioEnabled: root.btEnabled
         discovering: root.btDiscovering
         devices: root.btDevices
@@ -1155,7 +1175,12 @@ Item {
     BatteryPanel {
         id: batteryContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.battery || parent.width
+        height: batteryContent.contentHeight
         available: root.batteryAvailable
         level: root.batteryLevel
         charging: root.batteryCharging
@@ -1191,7 +1216,12 @@ Item {
     SettingsPanel {
         id: settingsContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.settings || parent.width
+        height: settingsContent.contentHeight
         liquidGlassEnabled: root.liquidGlassEnabled
         compositor: root.compositor
         handleStyle: root.handleStyle
@@ -1213,7 +1243,12 @@ Item {
     WallpaperPanel {
         id: wallpaperContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.wallpaper || parent.width
+        height: wallpaperContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.wallpaperMorph
         onCloseRequested: root.wallpaperCloseRequested()
@@ -1222,7 +1257,12 @@ Item {
     CalculatorPanel {
         id: calcContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.calc || parent.width
+        height: calcContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.calcMorph
         onCloseRequested: root.calcCloseRequested()
@@ -1231,7 +1271,12 @@ Item {
     TimetablePanel {
         id: timetableContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.timetable || parent.width
+        height: timetableContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.timetableMorph
         onCloseRequested: root.timetableCloseRequested()
@@ -1240,7 +1285,12 @@ Item {
     TimerPanel {
         id: timerContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.timer || parent.width
+        height: timerContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.timerMorph
         onCloseRequested: root.timerCloseRequested()
@@ -1250,7 +1300,12 @@ Item {
     ReminderPanel {
         id: reminderContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.reminder || parent.width
+        height: reminderContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.reminderMorph
         onCloseRequested: root.reminderCloseRequested()
@@ -1260,7 +1315,12 @@ Item {
     WeatherPanel {
         id: weatherContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.weather || parent.width
+        height: weatherContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.weatherMorph
         onCloseRequested: root.weatherCloseRequested()
@@ -1270,7 +1330,12 @@ Item {
     TodoPanel {
         id: todoContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.todo || parent.width
+        height: todoContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.todoMorph
         onCloseRequested: root.todoCloseRequested()
@@ -1287,7 +1352,12 @@ Item {
     ThemePanel {
         id: themeContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.theme || parent.width
+        height: themeContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.themeMorph
         onCloseRequested: root.themeCloseRequested()
@@ -1297,7 +1367,12 @@ Item {
     PowerMenuPanel {
         id: powerContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.power || parent.width
+        height: powerContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.powerMorph
         onCloseRequested: root.powerCloseRequested()
@@ -1307,7 +1382,12 @@ Item {
     ClipboardPanel {
         id: clipboardContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.clipboard || parent.width
+        height: clipboardContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.clipboardMorph
         onCloseRequested: root.clipboardCloseRequested()
@@ -1316,7 +1396,12 @@ Item {
     AppsPanel {
         id: appsContent
 
-        anchors.fill: parent
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.apps || parent.width
+        height: appsContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.appsMorph
         onCloseRequested: root.appsCloseRequested()
@@ -1564,15 +1649,19 @@ Item {
             Item {
                 id: mediaArtwork
 
-                readonly property int discSize: 96
-                readonly property int labelSize: 52
+                readonly property int discSize: 98
+                readonly property int labelSize: 40
+                // Where the record sits on the turntable photo (assets/turntable.png,
+                // shown at 138 x 112): the disc spins right over the pictured one.
+                readonly property real discCenterX: 54
+                readonly property real discCenterY: 52.9
                 // 1 = full speed. Bound to playback, but eased so play/pause
                 // ramps the turntable up/down rather than snapping.
                 property real spinSpeed: root.playing && mediaContent.visible ? 1 : 0
 
                 Layout.alignment: Qt.AlignVCenter
-                Layout.preferredWidth: discSize
-                Layout.preferredHeight: discSize
+                Layout.preferredWidth: 138
+                Layout.preferredHeight: 112
 
                 Behavior on spinSpeed {
                     NumberAnimation {
@@ -1588,10 +1677,22 @@ Item {
                     onTriggered: vinylDisc.rotation = (vinylDisc.rotation + mediaArtwork.spinSpeed * frameTime * (360 / 2.4)) % 360
                 }
 
+                // The turntable, under everything.
+                Image {
+                    anchors.fill: parent
+                    source: Qt.resolvedUrl("assets/turntable.png")
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                }
+
                 Item {
                     id: vinylDisc
 
-                    anchors.fill: parent
+                    x: mediaArtwork.discCenterX - width / 2
+                    y: mediaArtwork.discCenterY - height / 2
+                    width: mediaArtwork.discSize
+                    height: mediaArtwork.discSize
 
                     Rectangle {
                         anchors.fill: parent
@@ -1708,7 +1809,7 @@ Item {
                 // Static sheen — lives outside the rotating disc so the highlight
                 // stays put like a real light source while the record turns.
                 Rectangle {
-                    anchors.fill: parent
+                    anchors.fill: vinylDisc
                     radius: width / 2
                     gradient: Gradient {
                         orientation: Gradient.Vertical
@@ -1722,25 +1823,63 @@ Item {
                         }
                     }
                 }
+
+                // The tonearm (assets/arm.png, cut out of the photo whole) pivots
+                // on its bearing like the real thing: it swings in to the lead-in
+                // groove when a track plays, creeps toward the label as the track
+                // runs, and swings back to its rest when playback stops. While it
+                // is travelling it is "lifted" (drawn a touch larger), and it
+                // settles back down when it lands.
+                //
+                // Angles are relative to the pose in the photo; the pivot is at
+                // (109.5, 22.5) in this 138 x 112 box.
+                readonly property real armRest: -37.2
+                readonly property real armLeadIn: -18.5
+                readonly property real armRunOut: 6.3
+                readonly property real armTarget: root.playing && mediaContent.visible ? armLeadIn + (armRunOut - armLeadIn) * root.mediaProgress : armRest
+                property real armAngle: armTarget
+                readonly property bool armTravelling: Math.abs(armAngle - armTarget) > 0.6
+                property real armLift: armTravelling ? 1.035 : 1
+
+                Behavior on armAngle {
+                    SmoothedAnimation {
+                        velocity: 22
+                        maximumEasingTime: 380
+                    }
+                }
+
+                Behavior on armLift {
+                    NumberAnimation {
+                        duration: 260
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Image {
+                    anchors.fill: parent
+                    source: Qt.resolvedUrl("assets/arm.png")
+                    smooth: true
+                    mipmap: true
+                    transform: [
+                        Scale {
+                            origin.x: 109.5
+                            origin.y: 22.5
+                            xScale: mediaArtwork.armLift
+                            yScale: mediaArtwork.armLift
+                        },
+                        Rotation {
+                            origin.x: 109.5
+                            origin.y: 22.5
+                            angle: mediaArtwork.armAngle
+                        }
+                    ]
+                }
             }
 
             ColumnLayout {
                 Layout.alignment: Qt.AlignVCenter
                 Layout.fillWidth: true
                 spacing: 2
-
-                HandleStyleSwitch {
-                    handleStyle: root.handleStyle
-                    batteryCharging: root.batteryCharging
-                    batteryLevel: root.batteryLevel
-                    statusText: root.dateText
-                    fontFamily: root.fontFamily
-                    compact: true
-                    showBattery: true
-                    onHandleStyleRequested: style => root.handleStyleRequested(style)
-                    onBatteryRequested: root.batteryRequested()
-                    onSettingsRequested: root.glacierSettingsRequested()
-                }
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -2005,31 +2144,6 @@ Item {
                         }
                     }
 
-                    Rectangle {
-                        Layout.preferredWidth: 24
-                        Layout.preferredHeight: 24
-                        radius: 10
-                        color: favoriteMouse.containsMouse ? "#151515" : "#090909"
-                        border.width: 1
-                        border.color: "#232323"
-
-                        MIcon {
-                            anchors.centerIn: parent
-                            name: "favorite"
-                            size: 14
-                            color: root.primaryText
-                            filled: false
-                        }
-
-                        MouseArea {
-                            id: favoriteMouse
-
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.favoriteRequested()
-                        }
-                    }
                 }
             }
         }
@@ -2072,6 +2186,8 @@ Item {
 
             Layout.fillWidth: true
             Layout.preferredHeight: active ? sideHeight + slotGap + currentHeight + slotGap + sideHeight : 0
+            // Breathing room under the turntable.
+            Layout.topMargin: active ? 12 : 0
             Layout.bottomMargin: active ? 12 : 0
             visible: active
             clip: true

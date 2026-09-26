@@ -1,8 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
 import Quickshell
 import Quickshell.Io
+import Quickshell.Widgets
 
 // Wallpaper picker for ~/Pictures/Wallpapers (folders one level deep).
 //
@@ -461,13 +461,48 @@ Item {
     scale: 0.94 + 0.06 * root.panelProgress
     transformOrigin: Item.Top
 
+    // Keyboard focus goes to the text field once the island has finished
+    // opening. Taken mid-morph, Hyprland held back the surface's frame
+    // callbacks for ~300 ms and the opening animation froze halfway.
+    Timer {
+        id: focusAfterOpen
+
+        interval: 360
+        onTriggered: {
+            if (!root.visible)
+                return;
+            search.forceActiveFocus();
+            if (root.typedEarly !== "") {
+                search.insert(search.cursorPosition, root.typedEarly);
+                root.typedEarly = "";
+                search.textEdited();
+            }
+        }
+    }
+
+    // Until then the panel itself holds the keyboard: what's typed in the
+    // first moments is kept and handed to the field, and Esc still closes.
+    property string typedEarly: ""
+
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Escape) {
+            root.closeRequested();
+            event.accepted = true;
+        } else if (event.text !== "" && event.text.charCodeAt(0) >= 32 && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+            root.typedEarly += event.text;
+            event.accepted = true;
+        }
+    }
+
     onVisibleChanged: {
         if (root.visible) {
             root.query = "";
             search.text = "";
             root.scan();
             root.revealCurrent();
-            search.forceActiveFocus();
+            root.typedEarly = "";
+            root.forceActiveFocus();
+            focusAfterOpen.restart();
         }
     }
 
@@ -583,24 +618,19 @@ Item {
                 Layout.preferredWidth: 54
                 Layout.preferredHeight: root.headerHeight
 
-                Image {
-                    id: currentThumb
-
+                ClippingRectangle {
                     anchors.fill: parent
-                    source: root.current !== "" ? root.thumbFor(root.current) : ""
-                    fillMode: Image.PreserveAspectCrop
-                    asynchronous: true
-                    visible: false
-                }
+                    radius: 9
+                    color: "transparent"
 
-                OpacityMask {
-                    anchors.fill: parent
-                    source: currentThumb
-                    visible: currentThumb.status === Image.Ready
-                    maskSource: Rectangle {
-                        width: 54
-                        height: root.headerHeight
-                        radius: 9
+                    Image {
+                        id: currentThumb
+
+                        anchors.fill: parent
+                        source: root.current !== "" ? root.thumbFor(root.current) : ""
+                        sourceSize.width: 108
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
                     }
                 }
 
@@ -995,7 +1025,7 @@ Item {
                     cellWidth: width / root.columns
                     cellHeight: Math.round(cellWidth * 0.62)
                     boundsBehavior: Flickable.StopAtBounds
-                    cacheBuffer: 600
+                    cacheBuffer: 160
                     currentIndex: -1
                     highlightFollowsCurrentItem: true
                     highlightMoveDuration: 180
@@ -1059,21 +1089,35 @@ Item {
 
                             Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
 
-                            Image {
-                                id: thumb
-
-                                // Cached thumb first; the original (downscaled) if
-                                // the cache doesn't have it yet.
-                                property bool fallback: false
-
+                            // Rounded by ClippingRectangle rather than OpacityMask:
+                            // the mask rendered every tile through two extra
+                            // offscreen textures, all created in the same frames
+                            // the island was opening, which is what stuttered.
+                            ClippingRectangle {
                                 anchors.fill: parent
-                                source: thumb.fallback ? tile.modelData.path : root.thumbFor(tile.modelData.path)
-                                sourceSize.width: 480
-                                fillMode: Image.PreserveAspectCrop
-                                asynchronous: true
-                                cache: true
-                                visible: false
-                                onStatusChanged: if (status === Image.Error && !thumb.fallback) thumb.fallback = true
+                                radius: 9
+                                color: "#111111"
+
+                                Image {
+                                    id: thumb
+
+                                    // Cached thumb first; the original (downscaled) if
+                                    // the cache doesn't have it yet.
+                                    property bool fallback: false
+
+                                    anchors.fill: parent
+                                    source: thumb.fallback ? tile.modelData.path : root.thumbFor(tile.modelData.path)
+                                    // Tiles are ~150px wide; decoding the 480px thumbs
+                                    // at full size tripled the texture uploads.
+                                    sourceSize.width: 320
+                                    fillMode: Image.PreserveAspectCrop
+                                    asynchronous: true
+                                    cache: true
+                                    opacity: status === Image.Ready ? 1 : 0
+                                    onStatusChanged: if (status === Image.Error && !thumb.fallback) thumb.fallback = true
+
+                                    Behavior on opacity { NumberAnimation { duration: 220 } }
+                                }
                             }
 
                             Connections {
@@ -1082,31 +1126,6 @@ Item {
                                 function onValueChanged() {
                                     thumb.fallback = false;
                                 }
-                            }
-
-                            Rectangle {
-                                id: tileMask
-
-                                anchors.fill: parent
-                                radius: 9
-                                visible: false
-                            }
-
-                            OpacityMask {
-                                anchors.fill: parent
-                                source: thumb
-                                maskSource: tileMask
-                                opacity: thumb.status === Image.Ready ? 1 : 0
-
-                                Behavior on opacity { NumberAnimation { duration: 220 } }
-                            }
-
-                            // Placeholder while loading
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 9
-                                color: "#111111"
-                                visible: thumb.status !== Image.Ready
                             }
 
                             // Name

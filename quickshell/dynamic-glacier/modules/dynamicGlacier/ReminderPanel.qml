@@ -691,11 +691,18 @@ Item {
         interval: 1000
         repeat: true
         running: true
+        // `now` drives every relative time in the list, so writing it rebuilt
+        // the whole (hidden) list once a second, all day. Hidden, the clock
+        // only moves when a reminder is actually due, and once a minute.
         onTriggered: {
-            root.now = Date.now();
-            root.checkDue();
-            if (new Date(root.now).getSeconds() === 0)
-                root.pruneRecent();
+            const time = Date.now();
+            const minute = new Date(time).getSeconds() === 0;
+            if (root.visible || minute || root.reminders.some(r => r.fireAt <= time)) {
+                root.now = time;
+                root.checkDue();
+                if (minute)
+                    root.pruneRecent();
+            }
         }
     }
 
@@ -725,11 +732,46 @@ Item {
     scale: 0.94 + 0.06 * root.panelProgress
     transformOrigin: Item.Top
 
+    // Keyboard focus goes to the text field once the island has finished
+    // opening. Taken mid-morph, Hyprland held back the surface's frame
+    // callbacks for ~300 ms and the opening animation froze halfway.
+    Timer {
+        id: focusAfterOpen
+
+        interval: 360
+        onTriggered: {
+            if (!root.visible)
+                return;
+            input.forceActiveFocus();
+            if (root.typedEarly !== "") {
+                input.insert(input.cursorPosition, root.typedEarly);
+                root.typedEarly = "";
+                input.textEdited();
+            }
+        }
+    }
+
+    // Until then the panel itself holds the keyboard: what's typed in the
+    // first moments is kept and handed to the field, and Esc still closes.
+    property string typedEarly: ""
+
+    Keys.onPressed: event => {
+        if (event.key === Qt.Key_Escape) {
+            root.closeRequested();
+            event.accepted = true;
+        } else if (event.text !== "" && event.text.charCodeAt(0) >= 32 && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+            root.typedEarly += event.text;
+            event.accepted = true;
+        }
+    }
+
     onVisibleChanged: {
         if (root.visible) {
             root.now = Date.now();
             root.stripWeek = 0;
-            input.forceActiveFocus();
+            root.typedEarly = "";
+            root.forceActiveFocus();
+            focusAfterOpen.restart();
         }
     }
 

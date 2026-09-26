@@ -98,6 +98,7 @@ Item {
     property real timetableMorph: 0
     readonly property real timetablePanelHeight: islandContent.timetableContentHeight
 
+    property var panelWidths: ({})
     property real timerMorph: 0
     readonly property real timerPanelHeight: islandContent.timerContentHeight
 
@@ -416,6 +417,7 @@ Item {
             anchors.fill: parent
             // Padding relaxes to zero as a panel takes over — panels bring their own.
             anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.calcMorph) * (1 - root.powerMorph) * (1 - root.clipboardMorph) * (1 - root.timetableMorph) * (1 - root.timerMorph) * (1 - root.todoMorph) * (1 - root.themeMorph) * (1 - root.reminderMorph) * (1 - root.weatherMorph) * (1 - root.volumeMorph) : 0
+            panelWidths: root.panelWidths
             wifiMorph: root.wifiMorph
             wifiMaxPanelHeight: root.wifiMaxPanelHeight
             btMorph: root.btMorph
