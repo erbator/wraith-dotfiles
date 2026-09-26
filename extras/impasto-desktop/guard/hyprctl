@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Read-only hyprctl for impasto-desktop.
+#
+# impasto's services also push compositor options, monitor layouts and key
+# binds (eval, keyword, reload, hyprsunset…). Those belong to your own config,
+# so only queries — and dispatch, for clicks that focus or open things — get
+# through; everything else succeeds silently.
+verb=""
+for arg in "$@"; do
+    case "$arg" in
+        -*) ;;
+        *) verb="$arg"; break ;;
+    esac
+done
+
+case "$verb" in
+    monitors | workspaces | activeworkspace | clients | activewindow | layers | \
+    devices | binds | getoption | version | cursorpos | animations | \
+    workspacerules | globalshortcuts | instances | systeminfo | decorations | \
+    layouts | dispatch)
+        exec /usr/bin/hyprctl "$@"
+        ;;
+    *)
+        exit 0
+        ;;
+esac

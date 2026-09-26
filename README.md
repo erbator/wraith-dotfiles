@@ -69,6 +69,14 @@ Left to do by hand afterwards: the hyprglass blur plugin (`hyprpm`), the
 lockscreen themes (the separate `qylock` project, symlinked as `themes_link`),
 wallpapers in `~/Pictures/Wallpapers`, and `chsh -s "$(command -v fish)"`.
 
+## Extras
+
+`extras/impasto-desktop/install.sh` adds only the desktop widgets from
+[impasto](https://github.com/andreumassanet/impasto) (clock, weather,
+calendar, media, stats… on the wallpaper, under the windows) as their own
+Quickshell config next to dynamic-glacier. Nothing else from impasto runs,
+and nothing of yours is touched. See `extras/impasto-desktop/README.md`.
+
 ## What's intentionally excluded
 
 App caches, browser profiles, session/state files (anything a program
@@ -76,3 +84,25 @@ rewrites by itself — `fish_variables`, VSCodium's extension list, the trash
 and welcome-screen state), and anything holding credentials or personal data (e.g. Obsidian vault, Firefox profile, Spotify/
 Spicetify auth, VSCodium workspace storage, `.ssh`, shell history) are left
 out on purpose since this repo is public.
+
+## Credits
+
+This setup stands on two projects, and a huge thank-you goes to both of them.
+
+**[DynamicGlacier](https://github.com/mavxa/DynamicGlacier) by mavxa**, the
+dynamic-island shell for Hyprland that `quickshell/dynamic-glacier/` grew out
+of. The island itself, its morphing surface and the idea of every panel living
+inside it all come from there; everything in this repo is built on that base.
+Thank you, mavxa, for making it and sharing it. MIT-licensed; its licence is
+kept in `quickshell/dynamic-glacier/LICENSE`.
+
+**[impasto](https://github.com/andreumassanet/impasto) by Andreu Massanet**, a
+whole Hyprland shell whose palette comes from a painting. The desktop widgets
+that `extras/impasto-desktop/` installs (the clock, weather, calendar, media,
+stats and the rest, in both their Modern and Analogue looks) are entirely its
+work; the installer only runs them next to the island without touching
+anything else. Thank you, Andreu, for such a beautifully made project.
+GPL-3.0; its code is fetched from upstream at install time, not copied here,
+and its licence goes with the installed copy.
+
+If you like what you see here, go star them.

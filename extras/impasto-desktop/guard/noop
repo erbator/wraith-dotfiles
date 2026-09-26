@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Stands in for programs impasto-desktop must not run (hyprsunset,
+# systemd-inhibit): impasto's night light and sleep hold are not part of the
+# widgets.
+exit 0
