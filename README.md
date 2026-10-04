@@ -8,17 +8,18 @@ can be reproduced by copying these files back into place.
 Paths mirror where each file lives relative to `$HOME`. For example
 `.config/hypr/hyprland.lua` here belongs at `~/.config/hypr/hyprland.lua`.
 
-- Shell: `.config/fish/`
-- Window manager: `.config/hypr/`
+- Shell: `.config/fish/` (plus `.config/fastfetch/` for the `ff` fetch)
+- Window manager: `.config/hypr/`, lock screen included (`hyprlock.conf`,
+  dressed up as a plain console login)
 - Terminal: `.config/kitty/`
 - Prompt: `.config/starship.toml`
 - GTK/Qt theming: `.config/gtk-3.0/settings.ini`, `.config/kdeglobals`,
   `.config/xsettingsd/`
 - Apps: `.config/btop/`, `.config/micro/`, `.config/dolphinrc`,
-  `.config/qylock/`, `.config/satty/`, `.config/shelly/`,
+  `.config/satty/`, `.config/shelly/`,
   `.config/VSCodium/User/settings.json`, `.vim/colors/`
 - Themes: `.config/hypr/themes/themes.json` is the list the Theme panel
-  (Super+I) shows; `apply-theme.sh` recolours Hyprland, Kitty, Alacritty,
+  (Super+I) shows; `apply-theme.sh` recolours Hyprland, hyprlock, Kitty,
   Starship, btop, micro, the GTK accent and Satty from it, and switches
   Obsidian, VSCodium and vim to that scheme's own port.
   `.config/hypr/themes/assets/` holds the ported schemes that have to be
@@ -27,21 +28,32 @@ Paths mirror where each file lives relative to `$HOME`. For example
 - Quickshell: `quickshell/dynamic-glacier/` is the dynamic island shell
   (bar, panels, notifications), deployed to `~/.config/quickshell/dynamic-glacier`
   and run as `quickshell -c dynamic-glacier` — self-contained, it no longer
-  needs the `dynamic-glacier-git` package it started from;
-  `quickshell/lockscreen/` is the qylock lockscreen setup, deployed to
-  `~/.local/share/quickshell-lockscreen` (themes live in the separate
-  `qylock` project)
+  needs the `dynamic-glacier-git` package it started from
 - System/session bits: `.config/mimeapps.list`, `.config/uwsm/env`,
   `.config/wireplumber/`, `.config/xsettingsd/`, `.config/user-dirs.dirs`,
-  `.config/user-dirs.locale`, `.config/paru/paru.conf`
-- `patches/` — third-party patches applied on top of installed packages
-  (e.g. `dynamic-glacier-git`)
+  `.config/paru/paru.conf`
+
+## The island
+
+Everything lives in the island at the top of the screen. Tap Super on its own
+to open it, or go straight to a panel:
+
+- Super+D apps, Super+V clipboard, Super+C calculator, Super+W wallpapers
+- Super+R reminders and to-dos, one list: no time means a task you tick off,
+  a time means it rings ("szerda nyelvtan", "szerda 10:10 dolgozat").
+  Super+B opens the same list
+- Super+O órarend (timetable), with each lesson's homework and reminders on it
+- Super+T timer, Super+M weather, Super+I themes, Super+S settings
+- Super+Escape power menu
+
+Wi-Fi and Bluetooth open from the island itself. The timetable is
+`~/.local/share/dynamic-glacier/timetable.json`; press E in the panel to edit it.
 
 ## Restoring on a new machine
 
 ```sh
-git clone git@github.com:<your-user>/dotfiles.git
-cd dotfiles
+git clone https://github.com/Legfena/QS-DFMID26.git
+cd QS-DFMID26
 ./install.sh
 ```
 
@@ -54,36 +66,39 @@ files that already match are left alone, so re-running it is cheap.
 ```
 ./install.sh --dry-run       print what would happen, change nothing
 ./install.sh --no-packages   just deploy the configs
-./install.sh --no-apps       skip kitty/dolphin/firefox/micro/btop/fish/…
+./install.sh --no-apps       skip kitty/dolphin/micro/btop/fish/…
 ./install.sh --no-backup     overwrite without keeping copies
 ./install.sh --yes           don't ask anything (passes --noconfirm)
 ```
 
-Two trees do not live at their repo path and the installer handles the mapping:
-`quickshell/dynamic-glacier/` goes to `~/.config/quickshell/dynamic-glacier/`
-and `quickshell/lockscreen/` to `~/.local/share/quickshell-lockscreen/`.
-`patches/` is not deployed — it is applied by root against a
-`/usr/share/dynamic-glacier` install, which this setup no longer uses.
+One tree does not live at its repo path and the installer handles that:
+`quickshell/dynamic-glacier/` goes to `~/.config/quickshell/dynamic-glacier/`.
+`extras/` is left alone, those have their own installers.
 
-Left to do by hand afterwards: the hyprglass blur plugin (`hyprpm`), the
-lockscreen themes (the separate `qylock` project, symlinked as `themes_link`),
-wallpapers in `~/Pictures/Wallpapers`, and `chsh -s "$(command -v fish)"`.
+Left to do by hand afterwards: the hyprglass blur plugin (`hyprpm`),
+wallpapers in `~/Pictures/Wallpapers`, a picture of your choice at
+`~/.config/fastfetch/fetchimage.png` for `ff`, and
+`chsh -s "$(command -v fish)"`.
 
 ## Extras
 
 `extras/impasto-desktop/install.sh` adds only the desktop widgets from
 [impasto](https://github.com/andreumassanet/impasto) (clock, weather,
 calendar, media, stats… on the wallpaper, under the windows) as their own
-Quickshell config next to dynamic-glacier. Nothing else from impasto runs,
-and nothing of yours is touched. See `extras/impasto-desktop/README.md`.
+Quickshell config next to dynamic-glacier, and adds its own line to
+`autostart.lua`. Nothing else from impasto runs, and nothing of yours is
+touched. See `extras/impasto-desktop/README.md`.
 
 ## What's intentionally excluded
 
 App caches, browser profiles, session/state files (anything a program
 rewrites by itself — `fish_variables`, VSCodium's extension list, the trash
-and welcome-screen state), and anything holding credentials or personal data (e.g. Obsidian vault, Firefox profile, Spotify/
-Spicetify auth, VSCodium workspace storage, `.ssh`, shell history) are left
-out on purpose since this repo is public.
+and welcome-screen state), and anything holding credentials or personal data
+(e.g. Obsidian vault, browser profile, Spotify/Spicetify auth, VSCodium
+workspace storage, `.ssh`, shell history, the island's own reminders and
+timetable) are left out on purpose since this repo is public. Files the
+setup generates for itself, like `hyprlock-colors.conf`, the theme colour
+files and `compositor.lua`, aren't tracked either.
 
 ## License
 

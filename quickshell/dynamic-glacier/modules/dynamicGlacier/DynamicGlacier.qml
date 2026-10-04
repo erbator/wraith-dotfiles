@@ -254,7 +254,7 @@ Scope {
     // Floor for the Wi-Fi panel; the island grows past it to fit the network list,
     // up to wifiMaxPanelHeight.
     readonly property int wifiMinHeight: 132
-    readonly property int wifiMaxPanelHeight: 440
+    readonly property int wifiMaxPanelHeight: 580
     readonly property int btWidth: 500
     readonly property int btMinHeight: 132
     readonly property int btMaxPanelHeight: 440
@@ -284,28 +284,25 @@ Scope {
     readonly property int timerWidth: 460
     readonly property int timerMinHeight: 132
     readonly property int timerMaxPanelHeight: 400
-    readonly property int todoWidth: 520
-    readonly property int todoMinHeight: 132
-    readonly property int todoMaxPanelHeight: 520
     readonly property int themeWidth: 580
     readonly property int themeMinHeight: 132
     readonly property int themeMaxPanelHeight: 440
     readonly property int reminderWidth: 480
     readonly property int reminderMinHeight: 132
     readonly property int reminderMaxPanelHeight: 470
-    readonly property int weatherWidth: 400
+    readonly property int weatherWidth: 440
     readonly property int weatherMinHeight: 132
-    readonly property int weatherMaxPanelHeight: 590
+    readonly property int weatherMaxPanelHeight: 600
 
     // Modes that morph the island into a full detail panel. These are
     // hover-owned: they close when the pointer leaves the island, and they
     // don't take clicks on the idle hitbox. Adding a panel means adding it
     // here (and, if it needs the keyboard, to keyboardPanelModes) — not to
     // four separate hand-written `mode === ...` chains.
-    readonly property var detailPanelModes: ["wifi", "bluetooth", "battery", "settings", "apps", "wallpaper", "calc", "power", "clipboard", "timetable", "timer", "todo", "theme", "reminder", "weather"]
+    readonly property var detailPanelModes: ["wifi", "bluetooth", "battery", "settings", "apps", "wallpaper", "calc", "power", "clipboard", "timetable", "timer", "theme", "reminder", "weather"]
     // The subset that holds a keyboard grab while open; losing the grab
     // (e.g. clicking another window) closes them.
-    readonly property var keyboardPanelModes: ["apps", "wallpaper", "calc", "power", "clipboard", "timetable", "timer", "todo", "theme", "reminder", "weather"]
+    readonly property var keyboardPanelModes: ["wifi", "apps", "wallpaper", "calc", "power", "clipboard", "timetable", "timer", "theme", "reminder", "weather"]
 
     function isDetailPanel(mode) {
         return root.detailPanelModes.indexOf(mode) !== -1;
@@ -387,17 +384,6 @@ Scope {
     readonly property bool wifiConnected: root.wifiSsid !== ""
 
     // WiFi manager panel (morphs the island into mode "wifi")
-    property bool wifiRadioEnabled: true
-    property var wifiNetworks: []
-    property string wifiExpandedSsid: ""
-    property string wifiPasswordDraft: ""
-    property string pendingWifiPassword: ""
-    property string pendingWifiSsid: ""
-    property bool pendingWifiSecured: false
-    property bool pendingWifiUsedPassword: false
-    property string wifiStatusText: ""
-    property bool wifiConnecting: false
-    property double lastWifiScanAt: 0
 
     // Bluetooth manager. Quickshell talks to BlueZ directly, so the panel and
     // compact status stay reactive without polling bluetoothctl through a shell.
@@ -483,8 +469,6 @@ Scope {
             return root.timetableWidth;
         case "timer":
             return root.timerWidth;
-        case "todo":
-            return root.todoWidth;
         case "theme":
             return root.themeWidth;
         case "reminder":
@@ -530,8 +514,6 @@ Scope {
             return root.timetableMinHeight;
         case "timer":
             return root.timerMinHeight;
-        case "todo":
-            return root.todoMinHeight;
         case "theme":
             return root.themeMinHeight;
         case "reminder":
@@ -626,9 +608,6 @@ Scope {
             root.exitPreviewActive = false;
         root.title = "Ready";
         root.body = "Waiting for a signal";
-        root.wifiExpandedSsid = "";
-        root.wifiPasswordDraft = "";
-        root.wifiStatusText = "";
         root.btStatusText = "";
 
         // Tell the sending app its notification is gone (timeout or the user
@@ -1298,30 +1277,7 @@ Scope {
         collapseTimer.stop();
         root.exitPreviewActive = false;
         root.mode = "wifi";
-        root.wifiExpandedSsid = "";
-        root.wifiPasswordDraft = "";
-        root.wifiStatusText = "";
-        root.refreshWifiRadioState();
-        root.scanWifiNetworks();
-    }
-
-    function refreshWifiRadioState() {
-        wifiRadioStateProc.exec(["nmcli", "-t", "-f", "WIFI", "radio"]);
-    }
-
-    function scanWifiNetworks() {
-        root.lastWifiScanAt = Date.now();
-        wifiScanProc.exec(["nmcli", "-t", "-f", "active,ssid,signal,security", "dev", "wifi", "list", "--rescan", "yes"]);
-    }
-
-    // Warms the network list while the island is merely open, so the Wi-Fi panel
-    // has something to show — and can size itself correctly — the instant it opens.
-    function prewarmWifiNetworks() {
-        if (Date.now() - root.lastWifiScanAt < 10000)
-            return;
-
-        root.refreshWifiRadioState();
-        root.scanWifiNetworks();
+        panelFocusGrab.active = true;
     }
 
     function splitNmcliLine(line) {
@@ -1351,83 +1307,6 @@ Scope {
 
         parts.push(current);
         return parts;
-    }
-
-    function parseWifiNetworks(text) {
-        const lines = text.split("\n").filter(line => line.trim() !== "");
-        const parsed = [];
-        const seen = {};
-
-        for (let i = 0; i < lines.length; i += 1) {
-            const parts = root.splitNmcliLine(lines[i]);
-
-            if (parts.length < 4)
-                continue;
-
-            const active = parts[0] === "yes";
-            const ssid = parts[1];
-            const signal = parseInt(parts[2]) || 0;
-            const security = parts.slice(3).join(":");
-            const secured = security !== "" && security !== "--";
-
-            if (ssid === "" || seen[ssid])
-                continue;
-
-            seen[ssid] = true;
-            parsed.push({
-                ssid: ssid,
-                signal: signal,
-                secured: secured,
-                active: active
-            });
-        }
-
-        parsed.sort((a, b) => b.signal - a.signal);
-        root.wifiNetworks = parsed;
-    }
-
-    function toggleWifiRadio() {
-        const nextState = !root.wifiRadioEnabled;
-
-        root.wifiRadioEnabled = nextState;
-        wifiRadioToggleProc.exec(["nmcli", "radio", "wifi", nextState ? "on" : "off"]);
-    }
-
-    function requestWifiExpand(ssid) {
-        root.wifiExpandedSsid = root.wifiExpandedSsid === ssid ? "" : ssid;
-        root.wifiPasswordDraft = "";
-        root.wifiStatusText = "";
-    }
-
-    function connectToWifiNetwork(ssid, secured) {
-        if (root.wifiConnecting)
-            return;
-
-        root.wifiConnecting = true;
-        root.wifiStatusText = "";
-        root.pendingWifiSsid = ssid;
-        root.pendingWifiSecured = secured;
-        root.pendingWifiUsedPassword = root.wifiPasswordDraft !== "";
-
-        const command = ["nmcli"];
-
-        if (root.pendingWifiUsedPassword) {
-            root.pendingWifiPassword = root.wifiPasswordDraft;
-            command.push("--ask");
-        }
-
-        command.push("dev", "wifi", "connect", ssid);
-
-        // Process executes this list directly, so SSIDs and passwords never pass
-        // through a shell. Secured networks receive the password over stdin, which
-        // also keeps it out of the process list.
-        wifiConnectProc.exec(command);
-    }
-
-    function disconnectFromWifiNetwork(ssid) {
-        root.wifiConnecting = true;
-        root.wifiStatusText = "";
-        wifiDisconnectProc.exec(["nmcli", "con", "down", "id", ssid]);
     }
 
     function parseActiveWifi(text) {
@@ -1738,22 +1617,8 @@ Scope {
         panelFocusGrab.active = true;
     }
 
-    // Morphs the island into the to-do list, or collapses it back to idle if
-    // it is already showing. Mirrors toggleTimetablePanel.
-    function toggleTodoPanel() {
-        if (root.mode === "todo") {
-            root.showIdle();
-            return;
-        }
-
-        collapseTimer.stop();
-        root.exitPreviewActive = false;
-        root.mode = "todo";
-        panelFocusGrab.active = true;
-    }
-
     // Morphs the island into the theme picker, or collapses it back to idle
-    // if it is already showing. Mirrors toggleTodoPanel.
+    // if it is already showing.
     function toggleThemePanel() {
         if (root.mode === "theme") {
             root.showIdle();
@@ -2241,93 +2106,6 @@ Scope {
         }
     }
 
-    Timer {
-        interval: 6000
-        repeat: true
-        running: root.mode === "wifi"
-        onTriggered: root.scanWifiNetworks()
-    }
-
-    Process {
-        id: wifiRadioStateProc
-
-        stdout: StdioCollector {
-            onStreamFinished: root.wifiRadioEnabled = text.trim() === "enabled"
-        }
-    }
-
-    Process {
-        id: wifiScanProc
-
-        stdout: StdioCollector {
-            onStreamFinished: root.parseWifiNetworks(text)
-        }
-    }
-
-    Process {
-        id: wifiRadioToggleProc
-
-        onExited: root.scanWifiNetworks()
-    }
-
-    Process {
-        id: wifiConnectProc
-
-        stdinEnabled: true
-        onStarted: {
-            if (root.pendingWifiPassword !== "") {
-                wifiConnectProc.write(root.pendingWifiPassword + "\n");
-                root.pendingWifiPassword = "";
-                root.wifiPasswordDraft = "";
-            }
-        }
-        onExited: (exitCode, exitStatus) => {
-            const attemptedSsid = root.pendingWifiSsid;
-            const secured = root.pendingWifiSecured;
-            const usedPassword = root.pendingWifiUsedPassword;
-
-            root.wifiConnecting = false;
-            root.pendingWifiPassword = "";
-            root.pendingWifiSsid = "";
-            root.pendingWifiSecured = false;
-            root.pendingWifiUsedPassword = false;
-
-            if (exitCode === 0) {
-                root.wifiExpandedSsid = "";
-                root.wifiPasswordDraft = "";
-                root.wifiStatusText = "";
-            } else if (secured && !usedPassword) {
-                // `nmcli device wifi connect` reuses a matching saved profile.
-                // Only fall back to asking for a secret when that direct attempt
-                // could not activate the secured network.
-                root.wifiExpandedSsid = attemptedSsid;
-                root.wifiPasswordDraft = "";
-                root.wifiStatusText = "Password required";
-            } else {
-                root.wifiStatusText = "Connection failed";
-            }
-
-            root.scanWifiNetworks();
-        }
-    }
-
-    Process {
-        id: wifiDisconnectProc
-
-        onExited: (exitCode, exitStatus) => {
-            root.wifiConnecting = false;
-
-            if (exitCode === 0) {
-                root.wifiExpandedSsid = "";
-                root.wifiStatusText = "";
-            } else {
-                root.wifiStatusText = "Disconnect failed";
-            }
-
-            root.scanWifiNetworks();
-        }
-    }
-
 
     // The shell state dir usually exists already, but setText() will not create it
     // on a first run, so make sure of it before anything tries to save.
@@ -2460,11 +2238,6 @@ Scope {
         }
     }
 
-    onInteractionOpenChanged: {
-        if (root.interactionOpen)
-            root.prewarmWifiNetworks();
-    }
-
     onMediaAvailableChanged: {
         if (root.mediaAvailable)
             root.trayMediaDismissed = false;
@@ -2484,7 +2257,7 @@ Scope {
         // Tall enough for the tallest expanded panel so the morph never clips.
         // The surface is transparent and input is limited to `mask`, so the extra
         // room costs nothing.
-        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMaxPanelHeight + 32, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32, root.timerMaxPanelHeight + 32, root.todoMaxPanelHeight + 32, root.themeMaxPanelHeight + 32, root.reminderMaxPanelHeight + 32, root.weatherMaxPanelHeight + 32)
+        implicitHeight: Math.max(root.windowHeight, root.wifiMaxPanelHeight + 32, root.btMaxPanelHeight + 32, root.settingsMaxPanelHeight + 32, root.appsMaxPanelHeight + 32, root.wallpaperMaxPanelHeight + 32, root.calcMaxPanelHeight + 32, root.powerMaxPanelHeight + 32, root.clipboardMaxPanelHeight + 32, root.timetableMaxPanelHeight + 32, root.timerMaxPanelHeight + 32, root.themeMaxPanelHeight + 32, root.reminderMaxPanelHeight + 32, root.weatherMaxPanelHeight + 32)
         visible: true
 
         // end-4 already enables compositor blur for `quickshell:*` surfaces.
@@ -2506,7 +2279,7 @@ Scope {
         anchors {
             top: true
         }
-        implicitWidth: Math.max(root.wallpaperWidth, root.clipboardWidth, root.themeWidth, root.calcWidth, root.timetableWidth, root.todoWidth, root.wifiWidth, root.alertWidth) + 120
+        implicitWidth: Math.max(root.wallpaperWidth, root.clipboardWidth, root.themeWidth, root.calcWidth, root.timetableWidth, root.wifiWidth, root.alertWidth) + 120
 
         mask: Region {
             item: interactionMask
@@ -2544,9 +2317,8 @@ Scope {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: root.targetY()
                 targetW: root.targetWidth()
-                panelWidths: ({ bluetooth: root.btWidth, battery: root.batteryWidth, settings: root.settingsWidth, wallpaper: root.wallpaperWidth, calc: root.calcWidth, timetable: root.timetableWidth, timer: root.timerWidth, reminder: root.reminderWidth, weather: root.weatherWidth, todo: root.todoWidth, theme: root.themeWidth, power: root.powerWidth, clipboard: root.clipboardWidth, apps: root.appsWidth })
+                panelWidths: ({ bluetooth: root.btWidth, battery: root.batteryWidth, settings: root.settingsWidth, wallpaper: root.wallpaperWidth, calc: root.calcWidth, timetable: root.timetableWidth, timer: root.timerWidth, reminder: root.reminderWidth, weather: root.weatherWidth, theme: root.themeWidth, power: root.powerWidth, clipboard: root.clipboardWidth, apps: root.appsWidth })
                 targetH: root.targetHeight()
-                wifiMaxPanelHeight: root.wifiMaxPanelHeight
                 btMaxPanelHeight: root.btMaxPanelHeight
                 mode: root.visualMode
                 handleStyle: root.handleStyle
@@ -2623,12 +2395,6 @@ Scope {
                 dateText: root.hoverDateText
                 workspaceIndicatorId: root.workspaceIndicatorId
                 workspaceIndicatorCount: root.workspaceIndicatorCount
-                wifiRadioEnabled: root.wifiRadioEnabled
-                wifiNetworks: root.wifiNetworks
-                wifiExpandedSsid: root.wifiExpandedSsid
-                wifiPasswordDraft: root.wifiPasswordDraft
-                wifiStatusText: root.wifiStatusText
-                wifiConnecting: root.wifiConnecting
                 appsMaxPanelHeight: root.appsMaxPanelHeight
                 favoriteAppIds: root.favoriteAppIds
                 onPreviousRequested: root.mediaPrevious()
@@ -2640,11 +2406,6 @@ Scope {
                 onDismissRequested: root.showIdle()
                 onWifiSettingsRequested: root.toggleWifiPanel()
                 onWifiCloseRequested: root.closePanelToWideIdle(root.wifiWidth)
-                onWifiToggleRadioRequested: root.toggleWifiRadio()
-                onWifiRowRequested: ssid => root.requestWifiExpand(ssid)
-                onWifiConnectRequested: (ssid, secured) => root.connectToWifiNetwork(ssid, secured)
-                onWifiDisconnectRequested: ssid => root.disconnectFromWifiNetwork(ssid)
-                onWifiPasswordChanged: text => root.wifiPasswordDraft = text
                 onBtCloseRequested: root.closePanelToWideIdle(root.btWidth)
                 onBtToggleRadioRequested: root.toggleBluetoothRadio()
                 onBtRefreshRequested: root.refreshBluetoothDevices()
@@ -2670,11 +2431,10 @@ Scope {
                 onClipboardCloseRequested: root.closePanelToWideIdle(root.clipboardWidth)
                 onTimetableCloseRequested: root.closePanelToWideIdle(root.timetableWidth)
                 onTimerCloseRequested: root.closePanelToWideIdle(root.timerWidth)
-                onTodoCloseRequested: root.closePanelToWideIdle(root.todoWidth)
                 onPanelSwitchRequested: mode => {
                     if (root.mode === mode)
                         return;
-                    const open = { reminder: root.toggleReminderPanel, timer: root.toggleTimerPanel, timetable: root.toggleTimetablePanel, todo: root.toggleTodoPanel, weather: root.toggleWeatherPanel }[mode];
+                    const open = { reminder: root.toggleReminderPanel, timer: root.toggleTimerPanel, timetable: root.toggleTimetablePanel, todo: root.toggleReminderPanel, weather: root.toggleWeatherPanel }[mode];
                     if (open)
                         open();
                 }
@@ -2992,9 +2752,9 @@ Scope {
             root.toggleTimerPanel();
         }
 
+        // To-dos live in Reminders now; Super+B keeps opening them.
         function todo(): void {
-            root.panelOpenedByKeybind = true;
-            root.toggleTodoPanel();
+            root.toggleReminderPanel();
         }
 
         function theme(): void {

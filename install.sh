@@ -67,7 +67,7 @@ confirm() {
 CORE_PACKAGES=(
     # Compositor and session
     hyprland hyprpm uwsm xdg-desktop-portal xdg-desktop-portal-gtk
-    qt6-wayland qt6-declarative polkit
+    qt6-wayland qt6-declarative polkit hyprlock
     # The Quickshell bar/island itself
     quickshell
     # Hardware and services the panels read and control
@@ -78,8 +78,9 @@ CORE_PACKAGES=(
     awww cliphist wl-clipboard grim slurp satty hyprpicker
     # Wallpaper thumbnails (wall-thumbs.sh; falls back to ImageMagick)
     libvips
-    # Used by the scripts in .config/hypr/scripts
-    jq curl psmisc
+    # Used by the scripts in .config/hypr/scripts, the Weather panel (curl)
+    # and the Wi-Fi panel (link stats from iw, share-as-QR from qrencode)
+    jq curl psmisc iw qrencode
     # Fonts: Material Symbols draws every icon in the shell, the Nerd Fonts
     # are the selectable families in Settings, SF Pro is the UI font.
     ttf-material-symbols-variable
@@ -91,7 +92,7 @@ CORE_PACKAGES=(
 # The programs whose configs ship in this repo. Nothing breaks without them,
 # so --no-apps skips the lot.
 APP_PACKAGES=(
-    kitty dolphin firefox micro btop fastfetch
+    kitty dolphin micro btop fastfetch
     fish starship zoxide fzf vim neovim
 )
 
@@ -283,15 +284,12 @@ note "backups: $(tilde "$BACKUP_DIR")"
 
 while IFS= read -r -d '' relative; do
     case "$relative" in
-        # The two trees that do not live at their repo path.
+        # The one tree that does not live at its repo path.
         quickshell/dynamic-glacier/*)
             deploy_file "$REPO/$relative" "$HOME/.config/$relative"
             ;;
-        quickshell/lockscreen/*)
-            deploy_file "$REPO/$relative" "$HOME/.local/share/quickshell-lockscreen/${relative#quickshell/lockscreen/}"
-            ;;
-        # Repo furniture: the patch set is applied by hand, by root.
-        patches/*|.github/*|*/.gitkeep) ;;
+        # Repo furniture, and the extras, which have their own installers.
+        extras/*|.github/*|*/.gitkeep) ;;
         # Anything at the top level (README, this script, .gitignore).
         */*) deploy_file "$REPO/$relative" "$HOME/$relative" ;;
         *) ;;
@@ -312,7 +310,6 @@ step "Permissions and directories"
 
 if [ "$dry_run" -eq 0 ]; then
     chmod +x "$HOME"/.config/hypr/scripts/*.sh 2>/dev/null || true
-    chmod +x "$HOME"/.local/share/quickshell-lockscreen/lock.sh 2>/dev/null || true
     ok "helper scripts made executable"
 
     # Screenshots and the wallpaper picker both expect their folder to exist;
@@ -361,7 +358,7 @@ if [ "$dry_run" -eq 0 ]; then
         fi
     fi
 else
-    note "would chmod +x the hypr scripts and the lockscreen launcher"
+    note "would chmod +x the hypr scripts"
     note "would create Pictures/Screenshots, Pictures/Wallpapers, caches and state"
     note "would apply the saved theme (or srcery) to generate the colour files"
 fi
@@ -387,11 +384,6 @@ step "Done"
 
 if [ "$SHELL" != "$(command -v fish 2>/dev/null)" ] && command -v fish >/dev/null 2>&1; then
     note "fish is installed but is not your login shell: chsh -s \"\$(command -v fish)\""
-fi
-
-if [ ! -e "$HOME/.local/share/quickshell-lockscreen/themes_link" ]; then
-    note "lockscreen themes are a separate project — symlink them once you have it:"
-    note "  ln -s ~/Projects/qylock/themes ~/.local/share/quickshell-lockscreen/themes_link"
 fi
 
 note "the hyprglass blur plugin is managed by hyprpm, not pacman:"

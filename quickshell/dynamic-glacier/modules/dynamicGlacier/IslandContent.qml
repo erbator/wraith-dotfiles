@@ -88,26 +88,12 @@ Item {
     readonly property real normalizedMediaLength: root.normalizedSeconds(mediaLength)
     readonly property real mediaProgress: normalizedMediaLength > 0 ? Math.max(0, Math.min(1, normalizedMediaPosition / normalizedMediaLength)) : 0
 
-    property bool wifiRadioEnabled: true
-    property var wifiNetworks: []
-    property string wifiExpandedSsid: ""
-    property string wifiPasswordDraft: ""
-    property string wifiStatusText: ""
-    property bool wifiConnecting: false
 
     // 0 = island surface content, 1 = Wi-Fi manager. Driven by the surface morph transition.
     property real wifiMorph: 0
-    property int wifiMaxPanelHeight: 420
 
     // Wi-Fi panel metrics — kept as tokens so the surface can size itself to the list.
-    readonly property int wifiPanelPadding: 16
-    readonly property int wifiHeaderHeight: 32
-    readonly property int wifiSectionSpacing: 12
-    readonly property int wifiRowHeight: 42
-    readonly property int wifiRowSpacing: 6
-    readonly property int wifiPlaceholderHeight: 58
-    readonly property real wifiBodyHeight: root.wifiRadioEnabled && root.wifiNetworks.length > 0 ? wifiNetworkColumn.implicitHeight : root.wifiPlaceholderHeight
-    readonly property real wifiContentHeight: Math.min(root.wifiMaxPanelHeight, root.wifiPanelPadding * 2 + root.wifiHeaderHeight + root.wifiSectionSpacing + root.wifiBodyHeight)
+    readonly property real wifiContentHeight: wifiContent.contentHeight
 
     // Bluetooth uses the same surface morph as the other control panels, while
     // its layout stays isolated in BluetoothPanel.qml.
@@ -143,8 +129,6 @@ Item {
     property real timerMorph: 0
     readonly property real timerContentHeight: timerContent.contentHeight
 
-    property real todoMorph: 0
-    readonly property real todoContentHeight: todoContent.contentHeight
 
     property real themeMorph: 0
     readonly property real themeContentHeight: themeContent.contentHeight
@@ -185,12 +169,11 @@ Item {
     readonly property int favoriteAppCount: root.favoriteAppIds.length
 
     // Only one panel morph is ever non-zero, so the peek can react to whichever is running.
-    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph, root.calcMorph, root.powerMorph, root.clipboardMorph, root.timetableMorph, root.timerMorph, root.todoMorph, root.themeMorph, root.reminderMorph, root.weatherMorph)
+    readonly property real panelMorph: Math.max(root.wifiMorph, root.btMorph, root.batteryMorph, root.settingsMorph, root.appsMorph, root.wallpaperMorph, root.calcMorph, root.powerMorph, root.clipboardMorph, root.timetableMorph, root.timerMorph, root.themeMorph, root.reminderMorph, root.weatherMorph)
 
     // The peek stays mounted through the morph so it can fade/shrink into the panel.
     readonly property bool peekVisible: (root.mode === "idle" && root.forceExpanded) || root.mode === "wifi" || root.mode === "bluetooth" || root.mode === "battery" || root.mode === "settings" || root.mode === "apps"
     readonly property real peekMorphOpacity: 1 - Math.min(1, root.panelMorph / 0.45)
-    readonly property real wifiPanelProgress: Math.max(0, Math.min(1, (root.wifiMorph - 0.22) / 0.78))
     readonly property real appsPanelProgress: Math.max(0, Math.min(1, (root.appsMorph - 0.22) / 0.78))
 
     signal previousRequested
@@ -202,11 +185,6 @@ Item {
     signal dismissRequested
     signal wifiSettingsRequested
     signal wifiCloseRequested
-    signal wifiToggleRadioRequested
-    signal wifiRowRequested(string ssid)
-    signal wifiConnectRequested(string ssid, bool secured)
-    signal wifiDisconnectRequested(string ssid)
-    signal wifiPasswordChanged(string text)
     signal btCloseRequested
     signal btToggleRadioRequested
     signal btRefreshRequested
@@ -227,8 +205,7 @@ Item {
     signal calcCloseRequested
     signal timetableCloseRequested
     signal timerCloseRequested
-    signal todoCloseRequested
-    // A panel handing off to another one (To-do → Reminders / Timer).
+    // A panel handing off to another one (Reminders ⇄ Órarend).
     signal panelSwitchRequested(string mode)
     signal themeCloseRequested
     signal reminderCloseRequested
@@ -726,426 +703,18 @@ Item {
         }
     }
 
-    Item {
+    WifiPanel {
         id: wifiContent
 
-        anchors.fill: parent
-        opacity: root.wifiPanelProgress
-        visible: opacity > 0.001
-        scale: 0.94 + 0.06 * root.wifiPanelProgress
-        transformOrigin: Item.Top
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: root.wifiPanelPadding
-            spacing: root.wifiSectionSpacing
-
-            RowLayout {
-                Layout.fillWidth: true
-                Layout.preferredHeight: root.wifiHeaderHeight
-                spacing: 10
-
-                Rectangle {
-                    Layout.preferredWidth: root.wifiHeaderHeight
-                    Layout.preferredHeight: root.wifiHeaderHeight
-                    radius: 11
-                    color: "#090909"
-                    border.width: 1
-                    border.color: "#232323"
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: root.wifiRadioEnabled ? "wifi" : "wifi_off"
-                        size: 15
-                        color: root.wifiRadioEnabled ? root.primaryText : "#555555"
-                    }
-                }
-
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 0
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Wi-Fi"
-                        color: root.primaryText
-                        elide: Text.ElideRight
-                        font.family: root.fontFamily
-                        font.pixelSize: 15
-                        font.weight: Font.Bold
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: !root.wifiRadioEnabled ? "Off" : (root.wifiConnected ? root.wifiSsid : "Not connected")
-                        color: root.wifiConnected ? "#c8c8c8" : "#555555"
-                        elide: Text.ElideRight
-                        font.family: root.fontFamily
-                        font.pixelSize: 11
-                        font.weight: Font.DemiBold
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 22
-                    radius: 11
-                    color: root.wifiRadioEnabled ? "#f0f0f0" : "#0a0a0a"
-                    border.width: 1
-                    border.color: root.wifiRadioEnabled ? "#f0f0f0" : "#232323"
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 180
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-
-                    Rectangle {
-                        width: 16
-                        height: 16
-                        radius: 8
-                        y: 3
-                        x: root.wifiRadioEnabled ? parent.width - width - 3 : 3
-                        color: root.wifiRadioEnabled ? "#000000" : "#4b4b4b"
-
-                        Behavior on x {
-                            NumberAnimation {
-                                duration: 180
-                                easing.type: Easing.OutCubic
-                            }
-                        }
-                    }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.wifiToggleRadioRequested()
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 20
-                    Layout.preferredHeight: 20
-                    radius: 10
-                    color: wifiSettingsMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
-                    border.width: 1
-                    border.color: "#232323"
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: "settings"
-                        size: 12
-                        color: "#999999"
-                    }
-
-                    MouseArea {
-                        id: wifiSettingsMouse
-
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.glacierSettingsRequested()
-                    }
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 20
-                    Layout.preferredHeight: 20
-                    radius: 10
-                    color: wifiCloseMouse.containsMouse ? "#1a1a1a" : "#0a0a0a"
-                    border.width: 1
-                    border.color: "#232323"
-
-                    MIcon {
-                        anchors.centerIn: parent
-                        name: "close"
-                        size: 12
-                        color: "#999999"
-                    }
-
-                    MouseArea {
-                        id: wifiCloseMouse
-
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.wifiCloseRequested()
-                    }
-                }
-            }
-
-            Flickable {
-                id: wifiListFlick
-
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                clip: true
-                interactive: contentHeight > height
-                contentHeight: wifiNetworkColumn.height
-                boundsBehavior: Flickable.StopAtBounds
-                visible: root.wifiRadioEnabled && root.wifiNetworks.length > 0
-
-                ColumnLayout {
-                    id: wifiNetworkColumn
-
-                    width: wifiListFlick.width
-                    spacing: root.wifiRowSpacing
-
-                    Repeater {
-                        model: root.wifiNetworks
-
-                        delegate: Rectangle {
-                            id: wifiRowItem
-
-                            required property var modelData
-                            required property int index
-
-                            readonly property bool expanded: root.wifiExpandedSsid === modelData.ssid
-                            // Rows stagger in off the shared morph progress instead of their own
-                            // timers. The delay is capped so every row still reaches full opacity
-                            // at wifiMorph 1, including ones that arrive after the morph finished.
-                            readonly property real appear: Math.max(0, Math.min(1, (root.wifiMorph - Math.min(index, 6) * 0.045) / 0.55))
-
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: root.wifiRowHeight + (expanded ? wifiExpandedContent.implicitHeight + 10 : 0)
-                            radius: 13
-                            color: expanded ? "#0a0a0a" : (wifiRowMouse.containsMouse ? "#101010" : "transparent")
-                            border.width: 1
-                            border.color: expanded ? "#232323" : "transparent"
-                            opacity: appear
-
-                            transform: Translate {
-                                y: (1 - wifiRowItem.appear) * 12
-                            }
-
-                            Behavior on Layout.preferredHeight {
-                                NumberAnimation {
-                                    duration: 220
-                                    easing.type: Easing.OutCubic
-                                }
-                            }
-
-                            ColumnLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 12
-                                anchors.rightMargin: 12
-                                anchors.bottomMargin: wifiRowItem.expanded ? 10 : 0
-                                spacing: 0
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: root.wifiRowHeight
-                                    spacing: 8
-
-                                    MIcon {
-                                        name: wifiRowItem.modelData.signal >= 70 ? "wifi" : wifiRowItem.modelData.signal >= 40 ? "wifi_2_bar" : "wifi_1_bar"
-                                        size: 13
-                                        color: wifiRowItem.modelData.active ? root.primaryText : "#c8c8c8"
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: wifiRowItem.modelData.ssid
-                                        color: root.primaryText
-                                        elide: Text.ElideRight
-                                        font.family: root.fontFamily
-                                        font.pixelSize: 12
-                                        font.weight: Font.DemiBold
-                                    }
-
-                                    // Fixed slots so the trailing column stays aligned
-                                    // whether or not a row is secured or active.
-                                    Item {
-                                        Layout.preferredWidth: 12
-                                        Layout.preferredHeight: 12
-
-                                        MIcon {
-                                            anchors.centerIn: parent
-                                            name: "lock"
-                                            size: 11
-                                            color: "#9c9c9c"
-                                            visible: wifiRowItem.modelData.secured
-                                        }
-                                    }
-
-                                    Item {
-                                        Layout.preferredWidth: 14
-                                        Layout.preferredHeight: 14
-
-                                        MIcon {
-                                            anchors.centerIn: parent
-                                            name: "check"
-                                            size: 13
-                                            color: "#5b9bf8"
-                                            visible: wifiRowItem.modelData.active
-                                        }
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    id: wifiExpandedContent
-
-                                    Layout.fillWidth: true
-                                    spacing: 6
-                                    visible: wifiRowItem.expanded
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        visible: wifiRowItem.modelData.active
-                                        text: "Disconnect from this network?"
-                                        color: root.secondaryText
-                                        elide: Text.ElideRight
-                                        font.family: root.fontFamily
-                                        font.pixelSize: 11
-                                        font.weight: Font.DemiBold
-                                    }
-
-                                    Rectangle {
-                                        visible: !wifiRowItem.modelData.active && wifiRowItem.modelData.secured
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 34
-                                        radius: 10
-                                        color: "#090909"
-                                        border.width: 1
-                                        border.color: wifiPasswordInput.activeFocus ? "#3a3a3a" : "#232323"
-
-                                        TextInput {
-                                            id: wifiPasswordInput
-
-                                            anchors.fill: parent
-                                            anchors.leftMargin: 10
-                                            anchors.rightMargin: 10
-                                            verticalAlignment: Text.AlignVCenter
-                                            echoMode: TextInput.Password
-                                            color: root.primaryText
-                                            font.family: root.fontFamily
-                                            font.pixelSize: 12
-                                            clip: true
-                                            text: root.wifiPasswordDraft
-                                            onTextChanged: root.wifiPasswordChanged(text)
-                                            onAccepted: root.wifiConnectRequested(wifiRowItem.modelData.ssid, wifiRowItem.modelData.secured)
-
-                                            Text {
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                text: "Password"
-                                                color: "#5f5f5f"
-                                                visible: wifiPasswordInput.text === ""
-                                                font.family: root.fontFamily
-                                                font.pixelSize: 12
-                                            }
-                                        }
-                                    }
-
-                                    Text {
-                                        Layout.fillWidth: true
-                                        visible: root.wifiStatusText !== ""
-                                        text: root.wifiStatusText
-                                        color: "#f0736a"
-                                        elide: Text.ElideRight
-                                        font.family: root.fontFamily
-                                        font.pixelSize: 10
-                                        font.weight: Font.DemiBold
-                                    }
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        spacing: 6
-
-                                        Rectangle {
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: 30
-                                            radius: 10
-                                            color: wifiCancelMouse.containsMouse ? "#151515" : "#090909"
-                                            border.width: 1
-                                            border.color: "#232323"
-
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: "Cancel"
-                                                color: "#e5e5e5"
-                                                font.family: root.fontFamily
-                                                font.pixelSize: 12
-                                                font.weight: Font.DemiBold
-                                            }
-
-                                            MouseArea {
-                                                id: wifiCancelMouse
-
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: root.wifiRowRequested(wifiRowItem.modelData.ssid)
-                                            }
-                                        }
-
-                                        Rectangle {
-                                            Layout.fillWidth: true
-                                            Layout.preferredHeight: 30
-                                            radius: 10
-                                            color: wifiRowItem.modelData.active ? "#1a0f0f" : (root.wifiConnecting ? "#8a8a8a" : "#f0f0f0")
-                                            border.width: 1
-                                            border.color: wifiRowItem.modelData.active ? "#3d1f1f" : "transparent"
-
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: root.wifiConnecting ? "..." : (wifiRowItem.modelData.active ? "Disconnect" : "Connect")
-                                                color: wifiRowItem.modelData.active ? "#f0736a" : "#000000"
-                                                font.family: root.fontFamily
-                                                font.pixelSize: 12
-                                                font.weight: Font.Bold
-                                            }
-
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                enabled: !root.wifiConnecting
-                                                onClicked: {
-                                                    if (wifiRowItem.modelData.active)
-                                                        root.wifiDisconnectRequested(wifiRowItem.modelData.ssid);
-                                                    else
-                                                        root.wifiConnectRequested(wifiRowItem.modelData.ssid, wifiRowItem.modelData.secured);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: wifiRowMouse
-
-                                anchors.fill: parent
-                                anchors.bottomMargin: wifiRowItem.expanded ? parent.height - root.wifiRowHeight : 0
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (wifiRowItem.modelData.active || wifiRowItem.expanded)
-                                        root.wifiRowRequested(wifiRowItem.modelData.ssid);
-                                    else
-                                        root.wifiConnectRequested(wifiRowItem.modelData.ssid, wifiRowItem.modelData.secured);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: !wifiListFlick.visible
-
-                Text {
-                    anchors.centerIn: parent
-                    text: root.wifiRadioEnabled ? "No networks found" : "Wi-Fi is off"
-                    color: root.secondaryText
-                    font.family: root.fontFamily
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                }
-            }
-        }
+        // Fixed size (see panelWidths), so the island morphing around it
+        // never re-lays it out frame by frame.
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: root.panelWidths.wifi || parent.width
+        height: wifiContent.contentHeight
+        fontFamily: root.fontFamily
+        morph: root.wifiMorph
+        onCloseRequested: root.wifiCloseRequested()
     }
 
     BluetoothPanel {
@@ -1279,7 +848,13 @@ Item {
         height: timetableContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.timetableMorph
+        reminders: reminderContent.reminders
         onCloseRequested: root.timetableCloseRequested()
+        onReminderRequested: (text, fireAt, lesson) => reminderContent.addLinked(text, fireAt, lesson)
+        onOpenReminderRequested: id => {
+            reminderContent.focusReminder(id);
+            root.panelSwitchRequested("reminder");
+        }
     }
 
     TimerPanel {
@@ -1308,8 +883,13 @@ Item {
         height: reminderContent.contentHeight
         fontFamily: root.fontFamily
         morph: root.reminderMorph
+        timetable: timetableContent
         onCloseRequested: root.reminderCloseRequested()
         onAlertRequested: alert => root.panelAlert(alert)
+        onOpenLessonRequested: lesson => {
+            timetableContent.focusLesson(lesson);
+            root.panelSwitchRequested("timetable");
+        }
     }
 
     WeatherPanel {
@@ -1324,29 +904,6 @@ Item {
         fontFamily: root.fontFamily
         morph: root.weatherMorph
         onCloseRequested: root.weatherCloseRequested()
-        onSettingsRequested: root.glacierSettingsRequested()
-    }
-
-    TodoPanel {
-        id: todoContent
-
-        // Fixed size (see panelWidths), so the island morphing around it
-        // never re-lays it out frame by frame.
-        anchors.top: parent.top
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: root.panelWidths.todo || parent.width
-        height: todoContent.contentHeight
-        fontFamily: root.fontFamily
-        morph: root.todoMorph
-        onCloseRequested: root.todoCloseRequested()
-        onRemindRequested: text => {
-            reminderContent.prefill(text);
-            root.panelSwitchRequested("reminder");
-        }
-        onFocusRequested: text => {
-            timerContent.startFocusOn(text);
-            root.panelSwitchRequested("timer");
-        }
     }
 
     ThemePanel {

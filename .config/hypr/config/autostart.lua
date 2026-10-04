@@ -1,11 +1,15 @@
 -- Auto-start config
--- if you dont use UWSM add your auto start programs here, otherwise use XDG autostart https://wiki.archlinux.org/title/XDG_Autostart
+-- This is a UWSM session: Hyprland itself exports WAYLAND_DISPLAY & co. to the
+-- systemd activation environment and UWSM preloads ~/.config/uwsm/env, so no
+-- dbus-update-activation-environment call is needed here. Long-running programs
+-- go through LAUNCH_PREFIX (uwsm app) so each gets its own systemd scope.
+-- Anything that ships a systemd user unit is better enabled with
+-- `systemctl --user enable --now <unit>` than listed here.
 
 hl.on("hyprland.start", function ()
-    hl.exec_cmd("dbus-update-activation-environment --systemd --all")
-    hl.exec_cmd("xhost +SI:localuser:root")
-    hl.exec_cmd("awww-daemon")
-    hl.exec_cmd("wl-paste --watch cliphist store")
-    hl.exec_cmd("quickshell -c dynamic-glacier")
-    hl.exec_cmd("hyprpm reload -n")
+    hl.exec_cmd(LAUNCH_PREFIX .. "awww-daemon")
+    hl.exec_cmd(LAUNCH_PREFIX .. "wl-paste --type text --watch cliphist store")
+    hl.exec_cmd(LAUNCH_PREFIX .. "wl-paste --type image --watch cliphist store")
+    hl.exec_cmd(LAUNCH_PREFIX .. "quickshell -c dynamic-glacier")
+    hl.exec_cmd("hyprpm reload -n") -- one-shot, stays a plain exec
 end)

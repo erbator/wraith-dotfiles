@@ -350,6 +350,12 @@ Item {
         root.loaded = true;
     }
 
+    // The pre-2026 per-shell file, read only when the real one is missing.
+    // A FileView loads as soon as it has a path, so the path stays empty
+    // until then: set up front, the old file loaded on every start and was
+    // applied and saved over the real state.
+    property bool legacyWanted: false
+
     FileView {
         id: stateFile
 
@@ -358,13 +364,13 @@ Item {
         atomicWrites: true
         printErrors: false
         onLoaded: root.applyState(stateFile.text())
-        onLoadFailed: legacyState.reload()
+        onLoadFailed: root.legacyWanted = true
     }
 
     FileView {
         id: legacyState
 
-        path: Quickshell.statePath("wallpaper.json")
+        path: root.legacyWanted ? Quickshell.statePath("wallpaper.json") : ""
         printErrors: false
         onLoaded: {
             root.applyState(legacyState.text());

@@ -60,7 +60,6 @@ Item {
     // morph between shapes can be expressed as States + Transitions.
     property real targetW: 0
     property real targetH: 0
-    property int wifiMaxPanelHeight: 420
     property int btMaxPanelHeight: 420
     property int appsMaxPanelHeight: 470
 
@@ -102,8 +101,6 @@ Item {
     property real timerMorph: 0
     readonly property real timerPanelHeight: islandContent.timerContentHeight
 
-    property real todoMorph: 0
-    readonly property real todoPanelHeight: islandContent.todoContentHeight
 
     property real themeMorph: 0
     readonly property real themePanelHeight: islandContent.themeContentHeight
@@ -131,12 +128,6 @@ Item {
     readonly property color surfaceColor: root.liquidGlassActive ? "#d9070708" : (!expanded && handleStyle === "strip" ? "#0c0c0c" : "#000000")
     readonly property real antiCornerRadius: root.expanded || handleStyle === "strip" ? Math.min(3, height * 0.6) : Math.min(2.5, height * 0.12)
 
-    property bool wifiRadioEnabled: true
-    property var wifiNetworks: []
-    property string wifiExpandedSsid: ""
-    property string wifiPasswordDraft: ""
-    property string wifiStatusText: ""
-    property bool wifiConnecting: false
 
     property bool btDiscovering: false
     property var btDevices: []
@@ -178,11 +169,6 @@ Item {
     signal dismissRequested
     signal wifiSettingsRequested
     signal wifiCloseRequested
-    signal wifiToggleRadioRequested
-    signal wifiRowRequested(string ssid)
-    signal wifiConnectRequested(string ssid, bool secured)
-    signal wifiDisconnectRequested(string ssid)
-    signal wifiPasswordChanged(string text)
     signal btCloseRequested
     signal btToggleRadioRequested
     signal btRefreshRequested
@@ -208,7 +194,6 @@ Item {
     signal clipboardCloseRequested
     signal timetableCloseRequested
     signal timerCloseRequested
-    signal todoCloseRequested
     signal panelSwitchRequested(string mode)
     signal themeCloseRequested
     signal reminderCloseRequested
@@ -416,10 +401,9 @@ Item {
             z: 10
             anchors.fill: parent
             // Padding relaxes to zero as a panel takes over — panels bring their own.
-            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.calcMorph) * (1 - root.powerMorph) * (1 - root.clipboardMorph) * (1 - root.timetableMorph) * (1 - root.timerMorph) * (1 - root.todoMorph) * (1 - root.themeMorph) * (1 - root.reminderMorph) * (1 - root.weatherMorph) * (1 - root.volumeMorph) : 0
+            anchors.margins: root.expanded ? (root.mode === "media" ? 10 : 12) * (1 - root.wifiMorph) * (1 - root.btMorph) * (1 - root.batteryMorph) * (1 - root.settingsMorph) * (1 - root.appsMorph) * (1 - root.wallpaperMorph) * (1 - root.calcMorph) * (1 - root.powerMorph) * (1 - root.clipboardMorph) * (1 - root.timetableMorph) * (1 - root.timerMorph) * (1 - root.themeMorph) * (1 - root.reminderMorph) * (1 - root.weatherMorph) * (1 - root.volumeMorph) : 0
             panelWidths: root.panelWidths
             wifiMorph: root.wifiMorph
-            wifiMaxPanelHeight: root.wifiMaxPanelHeight
             btMorph: root.btMorph
             btMaxPanelHeight: root.btMaxPanelHeight
             batteryMorph: root.batteryMorph
@@ -432,7 +416,6 @@ Item {
             clipboardMorph: root.clipboardMorph
             timetableMorph: root.timetableMorph
             timerMorph: root.timerMorph
-            todoMorph: root.todoMorph
             themeMorph: root.themeMorph
             reminderMorph: root.reminderMorph
             weatherMorph: root.weatherMorph
@@ -512,12 +495,6 @@ Item {
             dateText: root.dateText
             workspaceIndicatorId: root.workspaceIndicatorId
             workspaceIndicatorCount: root.workspaceIndicatorCount
-            wifiRadioEnabled: root.wifiRadioEnabled
-            wifiNetworks: root.wifiNetworks
-            wifiExpandedSsid: root.wifiExpandedSsid
-            wifiPasswordDraft: root.wifiPasswordDraft
-            wifiStatusText: root.wifiStatusText
-            wifiConnecting: root.wifiConnecting
             favoriteAppIds: root.favoriteAppIds
             onPreviousRequested: root.previousRequested()
             onPlayPauseRequested: root.playPauseRequested()
@@ -528,11 +505,6 @@ Item {
             onDismissRequested: root.dismissRequested()
             onWifiSettingsRequested: root.wifiSettingsRequested()
             onWifiCloseRequested: root.wifiCloseRequested()
-            onWifiToggleRadioRequested: root.wifiToggleRadioRequested()
-            onWifiRowRequested: ssid => root.wifiRowRequested(ssid)
-            onWifiConnectRequested: (ssid, secured) => root.wifiConnectRequested(ssid, secured)
-            onWifiDisconnectRequested: ssid => root.wifiDisconnectRequested(ssid)
-            onWifiPasswordChanged: text => root.wifiPasswordChanged(text)
             onBtCloseRequested: root.btCloseRequested()
             onBtToggleRadioRequested: root.btToggleRadioRequested()
             onBtRefreshRequested: root.btRefreshRequested()
@@ -558,7 +530,6 @@ Item {
             onClipboardCloseRequested: root.clipboardCloseRequested()
             onTimetableCloseRequested: root.timetableCloseRequested()
             onTimerCloseRequested: root.timerCloseRequested()
-            onTodoCloseRequested: root.todoCloseRequested()
             onPanelSwitchRequested: mode => root.panelSwitchRequested(mode)
             onThemeCloseRequested: root.themeCloseRequested()
             onReminderCloseRequested: root.reminderCloseRequested()
@@ -574,7 +545,7 @@ Item {
     // Height is a plain binding, not part of the state, so it can re-target while
     // the morph is still running — the network list usually lands mid-transition,
     // and the app picker drawer opens long after the morph has settled.
-    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : (root.mode === "calc" ? Math.max(root.targetH, root.calcPanelHeight) : (root.mode === "power" ? Math.max(root.targetH, root.powerPanelHeight) : (root.mode === "clipboard" ? Math.max(root.targetH, root.clipboardPanelHeight) : (root.mode === "timetable" ? Math.max(root.targetH, root.timetablePanelHeight) : (root.mode === "timer" ? Math.max(root.targetH, root.timerPanelHeight) : (root.mode === "todo" ? Math.max(root.targetH, root.todoPanelHeight) : (root.mode === "theme" ? Math.max(root.targetH, root.themePanelHeight) : (root.mode === "reminder" ? Math.max(root.targetH, root.reminderPanelHeight) : (root.mode === "weather" ? Math.max(root.targetH, root.weatherPanelHeight) : root.targetH))))))))))))))
+    height: root.mode === "wifi" ? Math.max(root.targetH, root.wifiPanelHeight) : (root.mode === "bluetooth" ? Math.max(root.targetH, root.btPanelHeight) : (root.mode === "battery" ? Math.max(root.targetH, root.batteryPanelHeight) : (root.mode === "settings" ? Math.max(root.targetH, root.settingsPanelHeight) : (root.mode === "apps" ? Math.max(root.targetH, root.appsPanelHeight) : (root.mode === "wallpaper" ? Math.max(root.targetH, root.wallpaperPanelHeight) : (root.mode === "calc" ? Math.max(root.targetH, root.calcPanelHeight) : (root.mode === "power" ? Math.max(root.targetH, root.powerPanelHeight) : (root.mode === "clipboard" ? Math.max(root.targetH, root.clipboardPanelHeight) : (root.mode === "timetable" ? Math.max(root.targetH, root.timetablePanelHeight) : (root.mode === "timer" ? Math.max(root.targetH, root.timerPanelHeight) : (root.mode === "theme" ? Math.max(root.targetH, root.themePanelHeight) : (root.mode === "reminder" ? Math.max(root.targetH, root.reminderPanelHeight) : (root.mode === "weather" ? Math.max(root.targetH, root.weatherPanelHeight) : root.targetH)))))))))))))
 
     state: root.mode !== "idle" ? root.mode : (root.forceExpanded ? "peek" : "collapsed")
 
@@ -595,7 +566,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -618,7 +588,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -641,7 +610,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -664,7 +632,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -687,7 +654,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -710,7 +676,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -733,7 +698,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -756,7 +720,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -779,7 +742,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -802,7 +764,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -825,7 +786,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -848,7 +808,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -871,7 +830,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -894,7 +852,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -917,7 +874,6 @@ Item {
                 root.clipboardMorph: 1
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -940,7 +896,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 1
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -963,30 +918,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 1
-                root.todoMorph: 0
-                root.themeMorph: 0
-                root.reminderMorph: 0
-                root.weatherMorph: 0
-                root.volumeMorph: 0
-            }
-        },
-        State {
-            name: "todo"
-
-            PropertyChanges {
-                root.width: root.targetW
-                root.wifiMorph: 0
-                root.btMorph: 0
-                root.batteryMorph: 0
-                root.settingsMorph: 0
-                root.appsMorph: 0
-                root.wallpaperMorph: 0
-                root.calcMorph: 0
-                root.powerMorph: 0
-                root.clipboardMorph: 0
-                root.timetableMorph: 0
-                root.timerMorph: 0
-                root.todoMorph: 1
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -1009,7 +940,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 1
                 root.reminderMorph: 0
                 root.weatherMorph: 0
@@ -1032,7 +962,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 1
                 root.weatherMorph: 0
@@ -1055,7 +984,6 @@ Item {
                 root.clipboardMorph: 0
                 root.timetableMorph: 0
                 root.timerMorph: 0
-                root.todoMorph: 0
                 root.themeMorph: 0
                 root.reminderMorph: 0
                 root.weatherMorph: 1
@@ -1461,41 +1389,6 @@ Item {
                 }
             }
         },
-        // Morph into the to-do list. Same choreography as the other panels.
-        Transition {
-            to: "todo"
-
-            ParallelAnimation {
-                NumberAnimation {
-                    property: "width"
-                    duration: 260
-                    easing.type: Easing.OutCubic
-                }
-
-                NumberAnimation {
-                    property: "todoMorph"
-                    duration: 260
-                    easing.type: Easing.OutCubic
-                }
-            }
-        },
-        Transition {
-            from: "todo"
-
-            ParallelAnimation {
-                NumberAnimation {
-                    property: "width"
-                    duration: 300
-                    easing.type: Easing.InOutCubic
-                }
-
-                NumberAnimation {
-                    property: "todoMorph"
-                    duration: 260
-                    easing.type: Easing.OutCubic
-                }
-            }
-        },
         // Morph into the theme picker. Same choreography as the other panels.
         Transition {
             to: "theme"
@@ -1647,7 +1540,7 @@ Item {
             }
 
             NumberAnimation {
-                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,calcMorph,powerMorph,clipboardMorph,timetableMorph,timerMorph,todoMorph,themeMorph,reminderMorph,weatherMorph,volumeMorph"
+                properties: "wifiMorph,btMorph,batteryMorph,settingsMorph,appsMorph,wallpaperMorph,calcMorph,powerMorph,clipboardMorph,timetableMorph,timerMorph,themeMorph,reminderMorph,weatherMorph,volumeMorph"
                 duration: 200
                 easing.type: Easing.OutCubic
             }

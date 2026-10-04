@@ -1,5 +1,4 @@
 local mainMod = "SUPER"
-local launchPrefix = "uwsm app -- " -- if you are not using UWSM, make this empty (e.g. "")
 
 ---------------------------
 ---- WINDOW MANAGEMENT ----
@@ -8,7 +7,6 @@ local launchPrefix = "uwsm app -- " -- if you are not using UWSM, make this empt
 -- Window manipulation
 hl.bind(mainMod .. " + SHIFT + Escape", hl.dsp.exec_cmd("hyprctl kill")) -- moved off Super+Escape for the power menu below
 hl.bind(mainMod .. " + Q",              hl.dsp.window.close())
-hl.bind(mainMod .. " + ALT + Space", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + F",           hl.dsp.window.fullscreen())
 hl.bind(mainMod .. " + J",           hl.dsp.layout("togglesplit"))
 
@@ -20,15 +18,22 @@ hl.bind(mainMod .. " + Down",  hl.dsp.focus({ direction = "down" }))
 hl.bind("ALT + Tab",           hl.dsp.window.cycle_next())
 
 -- Move active window around workspaces & monitors
-hl.bind(mainMod .. " + SHIFT + Up",                   hl.dsp.window.move({ direction = "u" }))
-hl.bind(mainMod .. " + SHIFT + Right",                hl.dsp.window.move({ direction = "r" }))
-hl.bind(mainMod .. " + SHIFT + Left",                 hl.dsp.window.move({ direction = "l" }))
-hl.bind(mainMod .. " + SHIFT + Down",                 hl.dsp.window.move({ direction = "d" }))
-hl.bind(mainMod .. " + SHIFT + 1",                    hl.dsp.window.move({ monitor = MONITOR1 }))
-hl.bind(mainMod .. " + SHIFT + 2",                    hl.dsp.window.move({ monitor = MONITOR2 }))
-hl.bind(mainMod .. " + SHIFT + 3",                    hl.dsp.window.move({ monitor = MONITOR3 }))
-hl.bind(mainMod .. " + SHIFT + mouse_up",             hl.dsp.window.move({ monitor   = "-1" }))
-hl.bind(mainMod .. " + SHIFT + mouse_down",           hl.dsp.window.move({ monitor   = "+1" }))
+hl.bind(mainMod .. " + SHIFT + Up",    hl.dsp.window.move({ direction = "u" }))
+hl.bind(mainMod .. " + SHIFT + Right", hl.dsp.window.move({ direction = "r" }))
+hl.bind(mainMod .. " + SHIFT + Left",  hl.dsp.window.move({ direction = "l" }))
+hl.bind(mainMod .. " + SHIFT + Down",  hl.dsp.window.move({ direction = "d" }))
+-- ...to an absolute workspace (mirrors SUPER + N for focus)
+for i = 1, NUM_WORKSPACES do
+    local key = i % 10
+    hl.bind(mainMod .. " + SHIFT + " .. key, hl.dsp.window.move({ workspace = i }))
+end
+-- ...to a monitor (mirrors SUPER + ALT + N for focus; wheel up = previous, down = next)
+hl.bind(mainMod .. " + ALT + SHIFT + 1",    hl.dsp.window.move({ monitor = MONITOR1 }))
+hl.bind(mainMod .. " + ALT + SHIFT + 2",    hl.dsp.window.move({ monitor = MONITOR2 }))
+hl.bind(mainMod .. " + ALT + SHIFT + 3",    hl.dsp.window.move({ monitor = MONITOR3 }))
+hl.bind(mainMod .. " + SHIFT + mouse_up",   hl.dsp.window.move({ monitor = "-1" }))
+hl.bind(mainMod .. " + SHIFT + mouse_down", hl.dsp.window.move({ monitor = "+1" }))
+-- ...to the adjacent / Nth workspace of the current monitor
 hl.bind(mainMod .. " + CONTROL + SHIFT + Right",      hl.dsp.window.move({ workspace = "m+1" }))
 hl.bind(mainMod .. " + CONTROL + SHIFT + Left",       hl.dsp.window.move({ workspace = "m-1" }))
 hl.bind(mainMod .. " + CONTROL + SHIFT + mouse_up",   hl.dsp.window.move({ workspace = "m-1" }))
@@ -42,36 +47,29 @@ end
 hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag())
 hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize())
 
--- Zoom
-local function zoomfunction(value)
-    local zoomvalue = hl.get_config("cursor:zoom_factor")
-    if (zoomvalue + value) > 3.0 then
-        hl.config({ cursor = { zoom_factor = 3.0 } })
-    elseif (zoomvalue + value) < 1.0 then
-        hl.config({ cursor = { zoom_factor = 1.0 } })
-    else
-        hl.config({ cursor = { zoom_factor = zoomvalue + value } })
-    end
+-- Zoom (cursor:zoom_factor, 1.0 - 3.0). On the hu layout "+" only exists as
+-- Shift+3, so zoom-in lives on ó: the key where + / = sits on US keyboards,
+-- right next to Backspace. A 3-finger pinch does the same live (inputs.lua).
+local function zoomfunction(delta)
+    local target = math.min(3.0, math.max(1.0, hl.get_config("cursor:zoom_factor") + delta))
+    if math.abs(target - 1.0) < 0.01 then target = 1.0 end -- snap, so float drift can't keep the zoom path active
+    hl.config({ cursor = { zoom_factor = target } })
 end
-hl.bind(mainMod .. " + Minus", function() zoomfunction(-0.3) end, { repeating = true})
-hl.bind(mainMod .. " + Plus", function() zoomfunction(0.3) end, { repeating = true })
-
---# Zoom with keypad
-hl.bind(mainMod .. " + code:82", function() zoomfunction(-0.3) end, { repeating = true })
-hl.bind(mainMod .. " + code:86", function() zoomfunction(0.3) end, { repeating = true })
+hl.bind(mainMod .. " + Minus",  function() zoomfunction(-0.3) end, { repeating = true })
+hl.bind(mainMod .. " + oacute", function() zoomfunction(0.3) end,  { repeating = true })
 
 
 ------------------
 ---- LAUNCHER ----
 ------------------
 
-hl.bind(mainMod .. " + Return",     hl.dsp.exec_cmd(launchPrefix .. TERMINAL))
-hl.bind(mainMod .. " + E",          hl.dsp.exec_cmd(launchPrefix .. FILE_MANAGER))
+hl.bind(mainMod .. " + Return",     hl.dsp.exec_cmd(LAUNCH_PREFIX .. TERMINAL))
+hl.bind(mainMod .. " + E",          hl.dsp.exec_cmd(LAUNCH_PREFIX .. FILE_MANAGER))
 hl.bind(mainMod .. " + T",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier timer"))
 hl.bind(mainMod .. " + C",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier calculator"))
 hl.bind("XF86Calculator",           hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier calculator"))
 hl.bind(mainMod .. " + W",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier wallpaper"))
-hl.bind("CONTROL + SHIFT + Escape", hl.dsp.exec_cmd(launchPrefix .. TERMINAL .. " -e btop"))
+hl.bind("CONTROL + SHIFT + Escape", hl.dsp.exec_cmd(LAUNCH_PREFIX .. TERMINAL .. " -e btop"))
 hl.bind(mainMod .. " + D",          hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier apps"))
 
 ---------------------------
@@ -92,7 +90,7 @@ hl.bind("XF86AudioPrev",  hl.dsp.exec_cmd("playerctl previous"),   { locked = tr
 
 -- Brightness
 hl.bind("XF86MonBrightnessUp",   hl.dsp.exec_cmd("brightnessctl set 5%+"), { locked = true, repeating = true })
-hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl set 5%-"), { locked = true, repeating = true })
+hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("brightnessctl -n set 5%-"), { locked = true, repeating = true })
 
 -- Wi-Fi toggle (airplane-mode key)
 hl.bind("XF86WLAN", hl.dsp.exec_cmd("bash -c 'rfkill list wifi | grep -q \"yes$\" && rfkill unblock wifi || rfkill block wifi'"), { locked = true })
@@ -101,16 +99,15 @@ hl.bind("XF86WLAN", hl.dsp.exec_cmd("bash -c 'rfkill list wifi | grep -q \"yes$\
 ---- LOCKSCREEN ----
 ------------------
 
--- qylock (quickshell) session lock, replaces sddm/hyprlock
-hl.bind(mainMod .. " + L", hl.dsp.exec_cmd(os.getenv("HOME") .. "/.local/share/quickshell-lockscreen/lock.sh"), { locked = true })
+-- hyprlock session lock (config: ~/.config/hypr/hyprlock.conf)
+hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("pidof hyprlock || hyprlock"), { locked = true })
 
 -------------------
 ---- UTILITIES ----
 -------------------
 
 -- Screen Capture
-hl.bind(mainMod .. " + P",     hl.dsp.exec_cmd("hyprpicker -a -n"))
-hl.bind("Print",              hl.dsp.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/screenshot-region.sh"))
+hl.bind("Print", hl.dsp.exec_cmd(os.getenv("HOME") .. "/.config/hypr/scripts/screenshot-region.sh"))
 
 -------------------------------
 ---- WORKSPACES & MONITORS ----
@@ -138,11 +135,11 @@ hl.bind(mainMod .. " + CONTROL + Right",       hl.dsp.focus({ workspace = "m+1" 
 hl.bind(mainMod .. " + CONTROL + Left",        hl.dsp.focus({ workspace = "m-1" }))
 hl.bind(mainMod .. " + CONTROL + Down",        hl.dsp.focus({ workspace = "emptym" }))
 
--- Scroll through existing workspaces & monitors
-hl.bind(mainMod .. " + mouse_down",           hl.dsp.focus({ workspace = "m-1" }))
-hl.bind(mainMod .. " + mouse_up",             hl.dsp.focus({ workspace = "m+1" }))
-hl.bind(mainMod .. " + CONTROL + mouse_up",   hl.dsp.focus({ workspace = "m-1" }))
-hl.bind(mainMod .. " + CONTROL + mouse_down", hl.dsp.focus({ workspace = "m+1" }))
+-- Scroll through workspaces (SUPER) and monitors (SUPER + CONTROL); wheel up = previous, down = next
+hl.bind(mainMod .. " + mouse_up",             hl.dsp.focus({ workspace = "m-1" }))
+hl.bind(mainMod .. " + mouse_down",           hl.dsp.focus({ workspace = "m+1" }))
+hl.bind(mainMod .. " + CONTROL + mouse_up",   hl.dsp.focus({ monitor = "-1" }))
+hl.bind(mainMod .. " + CONTROL + mouse_down", hl.dsp.focus({ monitor = "+1" }))
 
 -- Special workspace (scratchpad)
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special" }))
@@ -151,8 +148,23 @@ hl.bind(mainMod .. " + SHIFT + S", hl.dsp.window.move({ workspace = "special" })
 hl.bind(mainMod .. " + S", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier settings"))
 hl.bind(mainMod .. " + Space",     hl.dsp.workspace.toggle_special())
 
--- Pop window out of the tiling grid to float freely
-hl.bind(mainMod .. " + U", hl.dsp.window.float({ action = "toggle" }))
+-- Pop window out of the tiling grid to float freely; when it becomes floating,
+-- shrink it to 60% x 65% of its monitor and center it
+hl.bind(mainMod .. " + U", function()
+    local w = hl.get_active_window()
+    if not w then return end
+    local wasFloating = w.floating -- read first: w is live, so it flips with the toggle
+    hl.dispatch(hl.dsp.window.float({ action = "toggle" }))
+    if wasFloating then return end -- was floating, now tiled again
+    local m = w.monitor
+    local scale = m.scale or 1
+    hl.dispatch(hl.dsp.window.resize({
+        x = math.floor(m.width / scale * 0.60),
+        y = math.floor(m.height / scale * 0.65),
+        relative = false,
+    }))
+    hl.dispatch(hl.dsp.window.center())
+end)
 
 ----------------------
 ---- DYNAMIC ISLAND ----
@@ -168,7 +180,7 @@ hl.bind(mainMod .. " + O", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier ca
 -- To-do list panel.
 hl.bind(mainMod .. " + B", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier todo"))
 
--- Theme picker (borders, Kitty, Alacritty).
+-- Theme picker (Hyprland colours, Kitty).
 hl.bind(mainMod .. " + I", hl.dsp.exec_cmd("quickshell ipc -c dynamic-glacier call dynamicGlacier theme"))
 
 -- Reminders (pop up + alert sound when they fire; also used by the timer).

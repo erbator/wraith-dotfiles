@@ -89,7 +89,6 @@ local modalMatches = {
     { title = "^(File Upload|Choose wallpaper|Library)(.*)$" },
     { class = "^(.*dialog.*)$" },
     { title = "^(.*dialog.*)$" },
-    { class = "^(hyprland-share-picker)$"},
 }
 for _, m in ipairs(modalMatches) do hl.window_rule({ match = m, float = true }) end
 

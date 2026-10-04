@@ -66,7 +66,6 @@ Item {
 
     property string phase: "work" // "work" | "short" | "long"
     property int completed: 0 // finished work sessions in this cycle
-    property string focusTask: "" // set by the To-do panel's "focus on this"
     property bool focusRunning: false
     property real focusEndsAt: 0
     property real focusTotalMs: root.workMin * 60000
@@ -245,7 +244,7 @@ Item {
                 kind: "break",
                 accent: String(root.breakColor),
                 icon: root.phase === "long" ? "self_improvement" : "coffee",
-                kicker: "Focus done  ·  " + root.completed + " of " + root.cycles + (root.focusTask !== "" ? "  ·  " + root.focusTask : ""),
+                kicker: "Focus done  ·  " + root.completed + " of " + root.cycles,
                 title: root.phase === "long" ? "Long break — you earned it" : "Break time",
                 body: root.autoStart ? minutes + " min break started  ·  ends " + root.endsAt(root.focusEndsAt) : minutes + " min break is ready when you are",
                 meta: today,
@@ -265,7 +264,7 @@ Item {
             kind: "focus",
             accent: String(root.focusColor),
             icon: "bolt",
-            kicker: (finished === "long" ? "Cycle complete" : "Break over") + (root.focusTask !== "" ? "  ·  " + root.focusTask : ""),
+            kicker: finished === "long" ? "Cycle complete" : "Break over",
             title: "Back to focus",
             body: root.autoStart ? session + "  ·  " + minutes + " min  ·  ends " + root.endsAt(root.focusEndsAt) : session + "  ·  " + minutes + " min",
             meta: today,
@@ -306,18 +305,6 @@ Item {
         return "";
     }
 
-    // From the To-do panel: a work session labelled with the task.
-    function startFocusOn(task) {
-        root.focusTask = task;
-        root.currentTab = 0;
-        if (root.phase !== "work")
-            root.setPhase("work");
-        if (!root.focusRunning)
-            root.toggleFocus();
-        root.showFlash("Focusing on “" + task + "”");
-        root.save();
-    }
-
     function setPhase(phase) {
         root.touch();
         root.phase = phase;
@@ -336,7 +323,6 @@ Item {
             root.phase = "work";
             root.focusTotalMs = root.phaseMs("work");
             root.focusRemainingMs = root.focusTotalMs;
-            root.focusTask = "";
             root.showFlash("Cycle restarted");
         } else {
             root.focusRunning = false;
@@ -543,7 +529,7 @@ Item {
         stateFile.setText(JSON.stringify({
             tab: root.currentTab,
             settings: { workMin: root.workMin, shortMin: root.shortMin, longMin: root.longMin, cycles: root.cycles, autoStart: root.autoStart },
-            focus: { task: root.focusTask, phase: root.phase, completed: root.completed, running: root.focusRunning, endsAt: root.focusEndsAt, total: root.focusTotalMs, remaining: root.focusRemainingMs },
+            focus: { phase: root.phase, completed: root.completed, running: root.focusRunning, endsAt: root.focusEndsAt, total: root.focusTotalMs, remaining: root.focusRemainingMs },
             countdown: { running: root.cdRunning, finished: root.cdFinished, endsAt: root.cdEndsAt, total: root.cdTotalMs, remaining: root.cdRemainingMs, label: root.cdLabel },
             stopwatch: { running: root.swRunning, startedAt: root.swStartedAt, accum: root.swAccumMs, laps: root.laps },
             stats: { date: root.statsDate, sessions: root.statsSessions, focusMs: root.statsFocusMs }
@@ -571,7 +557,6 @@ Item {
             const f = state.focus || {};
             root.phase = ["work", "short", "long"].includes(f.phase) ? f.phase : "work";
             root.completed = num(f.completed, 0);
-            root.focusTask = typeof f.task === "string" ? f.task : "";
             root.focusTotalMs = num(f.total, root.phaseMs(root.phase));
             root.focusRemainingMs = num(f.remaining, root.focusTotalMs);
             root.focusEndsAt = num(f.endsAt, 0);
@@ -1929,7 +1914,7 @@ Item {
         if (root.currentTab === 0) {
             const session = "session " + Math.min(root.completed + 1, root.cycles) + " of " + root.cycles;
             if (root.focusRunning)
-                return (root.phase === "work" && root.focusTask !== "" ? "“" + root.focusTask + "”" : root.phaseName(root.phase)) + "  ·  ends " + root.endsAt(root.focusEndsAt) + "  ·  " + session;
+                return root.phaseName(root.phase) + "  ·  ends " + root.endsAt(root.focusEndsAt) + "  ·  " + session;
             return (root.focusPristine ? "Ready" : "Paused") + "  ·  " + root.phaseName(root.phase).toLowerCase() + ", " + session;
         }
         if (root.currentTab === 1) {

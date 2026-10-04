@@ -11,7 +11,12 @@ import Quickshell.Io
 //     and where to go next, or when tomorrow starts
 //   - day tabs with dates and each day's hours; a week grid (W)
 //   - per-lesson notes, edited right here (Enter on a lesson)
-//   - To-do tasks due that day, pinned to the matching lesson
+//   - homework on each lesson, from Reminders: tasks (no time) and reminders,
+//     pinned to the lesson they're for (click one to open it there)
+//   - R on a lesson adds to its next occurrence: a task, or a reminder the
+//     evening before, in the morning, 10 minutes before, or as it starts
+//   - "aliases": { "Magyar": ["nyelvtan", "irodalom"] } in timetable.json
+//     lets other words mean a subject (a few Hungarian ones are built in)
 Item {
     id: root
 
@@ -19,6 +24,9 @@ Item {
     property real morph: 0
 
     signal closeRequested
+    // Hand-offs to the Reminders panel (wired in IslandContent).
+    signal reminderRequested(string text, real fireAt, var lesson)
+    signal openReminderRequested(string id)
 
     readonly property color primaryText: "#f7f7f7"
     readonly property color secondaryText: "#777777"
@@ -26,6 +34,7 @@ Item {
     readonly property color accentColor: "#4ade80"
     readonly property color noteColor: "#f87171"
     readonly property color taskColor: "#fbbf24"
+    readonly property color reminderColor: "#c084fc"
     readonly property color cardColor: "#080808"
     readonly property color cardBorder: "#1b1b1b"
     readonly property var subjectPalette: ["#60a5fa", "#f472b6", "#fbbf24", "#a78bfa", "#34d399", "#fb923c", "#22d3ee", "#f87171", "#a3e635", "#e879f9", "#2dd4bf", "#94a3b8", "#fda4af"]
@@ -55,6 +64,9 @@ Item {
     property int selectedDay: 0
     property int selectedLesson: -1
     property int editingLesson: -1
+    property int composingLesson: -1
+    property int composeWhen: 0
+    property var pendingLesson: null
     property bool weekView: false
     property string toast: ""
 
@@ -189,28 +201,251 @@ Item {
         return { kind: kind, lesson: null };
     }
 
-    // ── To-do link ────────────────────────────────────────────────────────
-    property var todos: []
+    // ── Homework: tasks and reminders from the Reminders panel ────────────
+    property var reminders: [] // the Reminders panel's list: tasks and reminders
+    property var userAliases: ({}) // from timetable.json
 
-    function tasksDue(dayIndex) {
-        const day = root.dateOf(dayIndex).getTime();
-        return root.todos.filter(t => !t.done && t.due === day);
+    function startOfDay(ms) {
+        const d = new Date(ms);
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     }
 
-    // A task belongs to a lesson when a word of it (or a tag) starts like
-    // the subject: "matek doga" → Matematika, "#angol" → Angol 11 tim.
-    function tasksForLesson(lesson, dayIndex) {
-        const aliases = { tori: "tort", tesi: "test", mate: "mate" };
-        let key = root.subjectKey(lesson.subject).slice(0, 4);
+    // Words that mean a subject without starting like its name. Keys are
+    // folded (no accents); values are the subject key's first four letters.
+    readonly property var aliasMap: {
+        const map = { nyelvtan: "magy", irodalom: "magy", fogalmazas: "magy", helyesiras: "magy", tori: "tort", tesi: "test", matek: "mate" };
+        for (const subject in root.userAliases) {
+            const key = root.subjectKey(subject).slice(0, 4);
+            for (const word of root.userAliases[subject] || [])
+                map[root.fold(String(word)).trim()] = key;
+        }
+        return map;
+    }
+
+    // Text is about a lesson when a word of it (or a tag) starts like the
+    // subject or like one of its aliases: "matek doga" → Matematika,
+    // "#angol" → Angol 11 tim, "nyelvtan" → Magyar.
+    function textMatches(text, tags, lesson) {
+        const key = root.subjectKey(lesson.subject).slice(0, 4);
         if (key.length < 3)
-            return [];
-        return root.tasksDue(dayIndex).filter(task => {
-            const words = root.fold(task.text).split(/[^a-z0-9]+/).concat((task.tags || []).map(root.fold));
-            return words.some(w => {
-                const k = w.slice(0, 4);
-                return k.length >= 3 && (k === key || aliases[k] === key);
-            });
+            return false;
+        const words = root.fold(text).split(/[^a-z0-9]+/).concat((tags || []).map(root.fold));
+        return words.some(w => {
+            if (w.length < 3)
+                return false;
+            if (w.slice(0, 4) === key)
+                return true;
+            for (const alias in root.aliasMap)
+                if (root.aliasMap[alias] === key && w.startsWith(alias))
+                    return true;
+            return false;
         });
+    }
+
+    function linkFor(lesson, dayIndex, date) {
+        const start = new Date(date);
+        start.setHours(0, root.startOf(lesson), 0, 0);
+        return { date: date, day: dayIndex, p: [lesson.p[0], lesson.p[1]], subject: lesson.subject, start: start.getTime() };
+    }
+
+    // The lesson of that subject on a given day ("szerda nyelvtan").
+    function lessonOnDate(text, dayMs) {
+        const dow = new Date(dayMs).getDay();
+        if (dow === 0 || dow === 6)
+            return null;
+        const lesson = root.lessonsOf(dow - 1).find(l => root.textMatches(text, [], l));
+        return lesson ? root.linkFor(lesson, dow - 1, root.startOfDay(dayMs)) : null;
+    }
+
+    // The lesson starting at a time ("szerda 10:10"), give or take 5 min.
+    function lessonAt(ms) {
+        const date = root.startOfDay(ms);
+        const dow = new Date(date).getDay();
+        if (dow === 0 || dow === 6)
+            return null;
+        const at = new Date(ms);
+        const mins = at.getHours() * 60 + at.getMinutes();
+        const lesson = root.lessonsOf(dow - 1).find(l => Math.abs(root.startOf(l) - mins) <= 5);
+        return lesson ? root.linkFor(lesson, dow - 1, date) : null;
+    }
+
+    // Everything due on a day, handed to the lesson it belongs to:
+    //   tasks → the first lesson of that subject that day (that's when
+    //   it's due); reminders linked from here → exactly their lesson;
+    //   other reminders that day → the lesson of that subject nearest to
+    //   when they ring.
+    function homeworkOf(dayIndex) {
+        const list = root.lessonsOf(dayIndex);
+        const date = root.dateOf(dayIndex).getTime();
+        const byLesson = list.map(() => []);
+        const loose = [];
+
+        for (const r of root.reminders) {
+            const timed = typeof r.fireAt === "number";
+            const item = { kind: timed ? "reminder" : "task", id: r.id, text: r.text, fireAt: timed ? r.fireAt : 0, date: date };
+            let i = -1;
+            if (r.lesson) {
+                if (r.lesson.date !== date)
+                    continue;
+                i = list.findIndex(l => l.p[0] === r.lesson.p[0]);
+            } else if (!timed) {
+                if (r.due !== date)
+                    continue;
+                i = list.findIndex(l => root.textMatches(r.text, [], l));
+            } else {
+                if (r.repeat || root.startOfDay(r.fireAt) !== date)
+                    continue;
+                const at = new Date(r.fireAt);
+                const mins = at.getHours() * 60 + at.getMinutes();
+                let best = Infinity;
+                list.forEach((l, k) => {
+                    if (!root.textMatches(r.text, [], l))
+                        return;
+                    const d = Math.abs(root.startOf(l) - mins);
+                    if (d < best) {
+                        best = d;
+                        i = k;
+                    }
+                });
+            }
+            if (i >= 0)
+                byLesson[i].push(item);
+            else
+                loose.push(item);
+        }
+        return { byLesson: byLesson, loose: loose };
+    }
+
+    readonly property var weekHomework: {
+        const out = [];
+        for (let d = 0; d < 5; d++)
+            out.push(root.homeworkOf(d));
+        return out;
+    }
+
+    function itemsOfDay(dayIndex) {
+        const hw = root.weekHomework[dayIndex];
+        return hw ? [].concat(...hw.byLesson, hw.loose) : [];
+    }
+
+    // When a reminder rings, relative to the lesson's day.
+    function reminderWhen(fireAt, lessonDate) {
+        const day = root.startOfDay(fireAt);
+        const time = Qt.formatTime(new Date(fireAt), "H:mm");
+        const before = new Date(lessonDate);
+        before.setDate(before.getDate() - 1);
+        if (day === lessonDate)
+            return time;
+        if (day === before.getTime())
+            return "előtte " + time;
+        const d = new Date(fireAt).getDay();
+        return (d >= 1 && d <= 5 ? root.dayShort[d - 1] : (d === 0 ? "V" : "Szo")) + " " + time;
+    }
+
+    // ── Reminder for a lesson ─────────────────────────────────────────────
+    // The lesson's next occurrence (this week's if it's still ahead).
+    readonly property var composeTarget: {
+        if (root.composingLesson < 0)
+            return null;
+        const lesson = root.lessonsOf(root.selectedDay)[root.composingLesson];
+        if (!lesson)
+            return null;
+        const date = root.dateOf(root.selectedDay);
+        const start = new Date(date);
+        start.setHours(0, root.startOf(lesson), 0, 0);
+        if (start.getTime() <= Date.now()) {
+            date.setDate(date.getDate() + 7);
+            start.setDate(start.getDate() + 7);
+        }
+        return { lesson: lesson, day: root.selectedDay, date: date.getTime(), start: start.getTime(), nextWeek: date.getTime() !== root.dateOf(root.selectedDay).getTime() };
+    }
+
+    readonly property var composeOptions: {
+        const t = root.composeTarget;
+        if (!t)
+            return [];
+        const eve = new Date(t.date);
+        eve.setDate(eve.getDate() - 1);
+        eve.setHours(19, 0, 0, 0);
+        const morning = new Date(t.date);
+        morning.setHours(6, 30, 0, 0);
+        const opts = [
+            { label: "Este", at: eve.getTime() },
+            { label: "Reggel", at: morning.getTime() },
+            { label: "10 p előtte", at: t.start - 600000 },
+            { label: "Kezdéskor", at: t.start }
+        ];
+        const now = Date.now();
+        return [{ label: "Feladat", at: -1 }].concat(opts.filter(o => o.at > now && o.at <= t.start && (o.label !== "Reggel" || o.at < t.start - 20 * 60000)));
+    }
+
+    function openComposer(lessonIndex) {
+        root.editingLesson = -1;
+        root.selectedLesson = lessonIndex;
+        root.composeWhen = 0;
+        root.composingLesson = lessonIndex;
+    }
+
+    function closeComposer() {
+        root.composingLesson = -1;
+        keyScope.forceActiveFocus();
+    }
+
+    function commitComposer(text) {
+        const t = root.composeTarget;
+        const opt = root.composeOptions[Math.min(root.composeWhen, root.composeOptions.length - 1)];
+        if (!t || !opt) {
+            root.showToast("Ez az óra már elkezdődött");
+            return;
+        }
+        const body = text.trim() !== "" ? text.trim() : t.lesson.subject;
+        root.reminderRequested(body, opt.at, { date: t.date, day: t.day, p: [t.lesson.p[0], t.lesson.p[1]], subject: t.lesson.subject, start: t.start });
+        root.showToast(opt.at < 0 ? "Feladat · " + t.lesson.subject + " " + root.dayShort[t.day] + " " + new Date(t.date).getDate() + "." : "Emlékeztető · " + opt.label.toLowerCase() + " (" + root.reminderWhen(opt.at, t.date) + ")");
+        root.closeComposer();
+    }
+
+    // From the Reminders panel: show the lesson a reminder is for.
+    function focusLesson(link) {
+        root.pendingLesson = link;
+        if (root.visible)
+            root.applyPendingLesson();
+    }
+
+    function applyPendingLesson() {
+        const link = root.pendingLesson;
+        root.pendingLesson = null;
+        if (!link)
+            return;
+        root.weekView = false;
+        root.highlightJump = true;
+        dayList.currentIndex = -1;
+        root.selectedDay = Math.max(0, Math.min(4, link.day));
+        root.selectedLesson = root.lessonsOf(root.selectedDay).findIndex(l => l.p[0] === link.p[0]);
+        root.editingLesson = -1;
+        root.composingLesson = -1;
+        Qt.callLater(root.syncHighlight);
+    }
+
+    // For the Reminders panel's "matek óra előtt": the next lesson a text
+    // is about, within the next two weeks.
+    function nextLessonFor(text) {
+        const now = Date.now();
+        const today = new Date();
+        for (let offset = 0; offset < 14; offset++) {
+            const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() + offset);
+            const dow = date.getDay();
+            if (dow === 0 || dow === 6)
+                continue;
+            for (const lesson of root.lessonsOf(dow - 1)) {
+                if (!root.textMatches(text, [], lesson))
+                    continue;
+                const start = new Date(date);
+                start.setHours(0, root.startOf(lesson), 0, 0);
+                if (start.getTime() > now)
+                    return { date: date.getTime(), day: dow - 1, p: [lesson.p[0], lesson.p[1]], subject: lesson.subject, start: start.getTime() };
+            }
+        }
+        return null;
     }
 
     // ── Rows for the day view ─────────────────────────────────────────────
@@ -220,6 +455,7 @@ Item {
     readonly property var dayRows: {
         const rows = [];
         const list = root.lessonsOf(root.selectedDay);
+        const hw = root.weekHomework[root.selectedDay];
         for (let i = 0; i < list.length; i++) {
             const lesson = list[i];
             if (i > 0) {
@@ -227,7 +463,7 @@ Item {
                 const gapPeriods = lesson.p[0] - list[i - 1].p[1] - 1;
                 rows.push({ kind: gapPeriods > 0 ? "free" : "break", from: prevEnd, until: root.startOf(lesson), periods: gapPeriods });
             }
-            rows.push({ kind: "lesson", index: i, lesson: lesson, start: root.startOf(lesson), end: root.endOf(lesson), tasks: root.tasksForLesson(lesson, root.selectedDay) });
+            rows.push({ kind: "lesson", index: i, lesson: lesson, start: root.startOf(lesson), end: root.endOf(lesson), items: hw.byLesson[i] || [] });
         }
         return rows;
     }
@@ -262,7 +498,7 @@ Item {
     }
 
     function writeFile() {
-        const data = { _help: root.helpText, bells: root.bells, days: root.days };
+        const data = { _help: root.helpText, bells: root.bells, aliases: root.userAliases, days: root.days };
         timetableFile.setText(JSON.stringify(data, null, 2) + "\n");
     }
 
@@ -292,6 +528,7 @@ Item {
         const previous = root.lessonsOf(root.selectedDay)[root.selectedLesson] || null;
         const direction = target > root.selectedDay ? 1 : -1;
         root.editingLesson = -1;
+        root.composingLesson = -1;
         root.highlightJump = true;
         dayList.currentIndex = -1;
         root.selectedDay = target;
@@ -329,6 +566,7 @@ Item {
         root.selectedDay = root.todayIndex >= 0 ? root.todayIndex : (root.status.dayIndex !== undefined ? root.status.dayIndex : 0);
         root.selectedLesson = -1;
         root.editingLesson = -1;
+        root.composingLesson = -1;
         if (root.todayIndex >= 0 && root.status.index !== undefined && (root.status.kind === "class" || root.status.kind === "break" || root.status.kind === "before"))
             root.selectedLesson = root.status.index;
         Qt.callLater(root.syncHighlight);
@@ -336,7 +574,6 @@ Item {
 
     // ── Files ─────────────────────────────────────────────────────────────
     readonly property string filePath: Quickshell.env("HOME") + "/.local/share/dynamic-glacier/timetable.json"
-    readonly property string todosPath: Quickshell.env("HOME") + "/.local/share/dynamic-glacier/todos.json"
 
     function applyTimetable(text) {
         try {
@@ -357,6 +594,7 @@ Item {
                 }
                 root.days = days;
             }
+            root.userAliases = data.aliases && typeof data.aliases === "object" && !Array.isArray(data.aliases) ? data.aliases : ({});
             root.missing = false;
         } catch (error) {
             root.showToast("timetable.json has an error — showing the last good version");
@@ -377,24 +615,6 @@ Item {
         onLoadFailed: {
             root.missing = true;
             root.loaded = true;
-        }
-    }
-
-    FileView {
-        id: todosFile
-
-        path: root.todosPath
-        preload: true
-        watchChanges: true
-        printErrors: false
-        onFileChanged: todosFile.reload()
-        onLoaded: {
-            try {
-                const data = JSON.parse(todosFile.text());
-                root.todos = Array.isArray(data) ? data : (data.items || []);
-            } catch (error) {
-                root.todos = [];
-            }
         }
     }
 
@@ -420,9 +640,12 @@ Item {
     onVisibleChanged: {
         if (root.visible) {
             root.goToday();
+            if (root.pendingLesson)
+                root.applyPendingLesson();
             keyScope.forceActiveFocus();
         } else {
             root.editingLesson = -1;
+            root.composingLesson = -1;
         }
     }
 
@@ -501,8 +724,13 @@ Item {
                 root.goToday();
             else if (key === Qt.Key_E)
                 root.openEditor();
-            else if ((key === Qt.Key_Return || key === Qt.Key_Enter || key === Qt.Key_N) && !root.weekView && root.selectedLesson >= 0)
+            else if ((key === Qt.Key_Return || key === Qt.Key_Enter || key === Qt.Key_N) && !root.weekView && root.selectedLesson >= 0) {
+                root.composingLesson = -1;
                 root.editingLesson = root.selectedLesson;
+            } else if (key === Qt.Key_R && root.selectedLesson >= 0) {
+                root.weekView = false;
+                root.openComposer(root.selectedLesson);
+            }
             else if (key === Qt.Key_Delete && !root.weekView && root.selectedLesson >= 0)
                 root.setNote(root.selectedDay, root.selectedLesson, "");
             else
@@ -771,7 +999,9 @@ Item {
 
                         readonly property bool selected: root.selectedDay === index && !root.weekView
                         readonly property bool isToday: root.todayIndex === index
-                        readonly property int dueCount: root.tasksDue(index).length
+                        readonly property var dayItems: root.itemsOfDay(index)
+                        readonly property int dueCount: dayItems.filter(i => i.kind === "task").length
+                        readonly property int reminderCount: dayItems.filter(i => i.kind === "reminder").length
 
                         Layout.fillWidth: true
                         Layout.fillHeight: true
@@ -830,15 +1060,27 @@ Item {
                             }
                         }
 
-                        Rectangle {
-                            visible: dayTab.dueCount > 0
+                        Row {
                             anchors.right: parent.right
                             anchors.top: parent.top
                             anchors.margins: 5
-                            width: 6
-                            height: 6
-                            radius: 3
-                            color: root.taskColor
+                            spacing: 2
+
+                            Rectangle {
+                                visible: dayTab.reminderCount > 0
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: root.reminderColor
+                            }
+
+                            Rectangle {
+                                visible: dayTab.dueCount > 0
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: root.taskColor
+                            }
                         }
 
                         MouseArea {
@@ -902,6 +1144,9 @@ Item {
 
                     anchors.fill: parent
                     anchors.margins: 5
+                    // Clip to the list itself: clipped only by the card, rows
+                    // scrolled past the top showed through its 5 px margin.
+                    clip: true
                     visible: !root.weekView && !root.missing
                     opacity: visible ? 1 : 0
                     model: root.dayRows
@@ -962,7 +1207,9 @@ Item {
                         readonly property bool selected: isLesson && root.selectedLesson === modelData.index
                         readonly property bool editing: isLesson && root.editingLesson === modelData.index
                         readonly property color tint: isLesson ? root.subjectColor(lesson.subject) : root.accentColor
-                        readonly property var tasks: isLesson ? modelData.tasks : []
+                        readonly property var items: isLesson ? modelData.items : []
+                        readonly property bool composing: isLesson && root.composingLesson === modelData.index
+                        readonly property real base: isDouble ? 62 : 46
                         readonly property bool isToday: root.selectedDay === root.todayIndex
                         readonly property real from: isLesson ? modelData.start : modelData.from
                         readonly property real until: isLesson ? modelData.end : modelData.until
@@ -973,7 +1220,7 @@ Item {
                         readonly property bool compactGap: !isLesson && modelData.kind === "break" && !live && until - from < 20
 
                         width: dayList.width
-                        height: isLesson ? (isDouble ? 62 : 46) + (editing ? 34 : 0) + (tasks.length > 0 ? 18 : 0) : (compactGap ? 6 : 22)
+                        height: isLesson ? base + (items.length > 0 ? 18 : 0) + (editing ? 34 : 0) + (composing ? 66 : 0) : (compactGap ? 6 : 22)
 
                         Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
 
@@ -1046,6 +1293,7 @@ Item {
                                     else {
                                         root.selectedLesson = row.modelData.index;
                                         root.editingLesson = -1;
+                                        root.composingLesson = -1;
                                     }
                                     keyScope.forceActiveFocus();
                                 }
@@ -1217,6 +1465,37 @@ Item {
                                     }
                                 }
 
+                                // Set a reminder for this lesson
+                                Rectangle {
+                                    Layout.preferredWidth: 24
+                                    Layout.preferredHeight: 24
+                                    radius: 8
+                                    visible: (lessonHover.hovered || row.selected) && !row.composing
+                                    color: bellHover.hovered ? Qt.rgba(root.reminderColor.r, root.reminderColor.g, root.reminderColor.b, 0.18) : "transparent"
+                                    border.width: 1
+                                    border.color: bellHover.hovered ? Qt.rgba(root.reminderColor.r, root.reminderColor.g, root.reminderColor.b, 0.5) : "#232323"
+                                    scale: bellHover.hovered ? 1.08 : 1
+
+                                    Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack; easing.overshoot: 2.4 } }
+
+                                    HoverHandler {
+                                        id: bellHover
+
+                                        cursorShape: Qt.PointingHandCursor
+                                    }
+
+                                    TapHandler {
+                                        onTapped: root.openComposer(row.modelData.index)
+                                    }
+
+                                    MIcon {
+                                        anchors.centerIn: parent
+                                        name: "notification_add"
+                                        size: 13
+                                        color: bellHover.hovered ? root.reminderColor : "#8a8a8a"
+                                    }
+                                }
+
                                 // Live: minutes left
                                 Text {
                                     visible: row.live
@@ -1228,35 +1507,86 @@ Item {
                                 }
                             }
 
-                            // To-do tasks due for this lesson
-                            Row {
-                                visible: row.tasks.length > 0
+                            // Homework: tasks due and reminders for this lesson
+                            Flickable {
+                                visible: row.items.length > 0
                                 x: 86
-                                y: (row.isDouble ? 62 : 46) - 6
-                                spacing: 8
+                                y: row.base - 6
+                                width: parent.width - 96
+                                height: 18
+                                clip: true
+                                contentWidth: itemRow.implicitWidth
+                                boundsBehavior: Flickable.StopAtBounds
+                                flickableDirection: Flickable.HorizontalFlick
 
-                                Repeater {
-                                    model: row.tasks
+                                Row {
+                                    id: itemRow
 
-                                    Row {
-                                        required property var modelData
+                                    height: 18
+                                    spacing: 6
 
-                                        spacing: 3
+                                    Repeater {
+                                        model: row.items
 
-                                        MIcon {
+                                        Rectangle {
+                                            id: hwChip
+
+                                            required property var modelData
+                                            readonly property bool isTask: modelData.kind === "task"
+                                            readonly property color tint: isTask ? root.taskColor : root.reminderColor
+
                                             anchors.verticalCenter: parent.verticalCenter
-                                            name: "assignment_late"
-                                            size: 11
-                                            color: root.taskColor
-                                        }
+                                            width: hwRow.implicitWidth + 12
+                                            height: 16
+                                            radius: 5
+                                            color: Qt.rgba(tint.r, tint.g, tint.b, hwHover.hovered ? 0.2 : 0.1)
+                                            border.width: 1
+                                            border.color: Qt.rgba(tint.r, tint.g, tint.b, 0.3)
 
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: modelData.text + (modelData.priority > 0 ? " " + "!".repeat(modelData.priority) : "")
-                                            color: root.taskColor
-                                            font.family: root.fontFamily
-                                            font.pixelSize: 10
-                                            font.weight: Font.Bold
+                                            Behavior on color { ColorAnimation { duration: 120 } }
+
+                                            HoverHandler {
+                                                id: hwHover
+
+                                                cursorShape: Qt.PointingHandCursor
+                                            }
+
+                                            TapHandler {
+                                                onTapped: root.openReminderRequested(hwChip.modelData.id)
+                                            }
+
+                                            Row {
+                                                id: hwRow
+
+                                                anchors.centerIn: parent
+                                                spacing: 3
+
+                                                MIcon {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    name: hwChip.isTask ? "assignment_late" : "notifications_active"
+                                                    size: 10
+                                                    color: hwChip.tint
+                                                }
+
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: hwChip.modelData.text
+                                                    color: hwChip.tint
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: 9
+                                                    font.weight: Font.Bold
+                                                }
+
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    visible: !hwChip.isTask
+                                                    text: hwChip.isTask ? "" : root.reminderWhen(hwChip.modelData.fireAt, hwChip.modelData.date)
+                                                    color: Qt.rgba(hwChip.tint.r, hwChip.tint.g, hwChip.tint.b, 0.7)
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: 9
+                                                    font.features: { "tnum": 1 }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -1266,7 +1596,7 @@ Item {
                             Rectangle {
                                 visible: row.editing
                                 x: 86
-                                y: (row.isDouble ? 62 : 46) + (row.tasks.length > 0 ? 18 : 0) - 2
+                                y: row.base + (row.items.length > 0 ? 18 : 0) - 2
                                 width: parent.width - 98
                                 height: 28
                                 radius: 8
@@ -1337,6 +1667,157 @@ Item {
                                         font: noteInput.font
                                         width: noteInput.width
                                         elide: Text.ElideRight
+                                    }
+                                }
+                            }
+
+                            // Reminder for this lesson
+                            Column {
+                                visible: row.composing
+                                x: 86
+                                y: row.base + (row.items.length > 0 ? 18 : 0) + (row.editing ? 34 : 0) - 2
+                                width: parent.width - 98
+                                spacing: 6
+
+                                Rectangle {
+                                    width: parent.width
+                                    height: 28
+                                    radius: 8
+                                    color: "#0a0a0a"
+                                    border.width: 1
+                                    border.color: Qt.rgba(root.reminderColor.r, root.reminderColor.g, root.reminderColor.b, 0.55)
+
+                                    onVisibleChanged: {
+                                        if (visible) {
+                                            reminderInput.text = "";
+                                            reminderInput.forceActiveFocus();
+                                        }
+                                    }
+
+                                    MIcon {
+                                        id: bellIcon
+
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        name: "notification_add"
+                                        size: 13
+                                        color: root.reminderColor
+                                    }
+
+                                    TextInput {
+                                        id: reminderInput
+
+                                        anchors.left: bellIcon.right
+                                        anchors.right: parent.right
+                                        anchors.leftMargin: 6
+                                        anchors.rightMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        color: root.primaryText
+                                        selectionColor: "#4a2a6a"
+                                        clip: true
+                                        font.family: root.fontFamily
+                                        font.pixelSize: 11
+                                        Keys.onReturnPressed: root.commitComposer(reminderInput.text)
+                                        Keys.onEnterPressed: root.commitComposer(reminderInput.text)
+                                        Keys.onEscapePressed: root.closeComposer()
+                                        Keys.onTabPressed: root.composeWhen = (root.composeWhen + 1) % Math.max(1, root.composeOptions.length)
+                                        Keys.onBacktabPressed: root.composeWhen = (root.composeWhen - 1 + root.composeOptions.length) % Math.max(1, root.composeOptions.length)
+
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            visible: reminderInput.text === ""
+                                            text: "Házi, dolgozat, hozd a… — Enter  ·  Tab: feladat / emlékeztető"
+                                            color: "#555555"
+                                            font: reminderInput.font
+                                            width: reminderInput.width
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+                                }
+
+                                Row {
+                                    spacing: 5
+
+                                    Repeater {
+                                        model: row.composing ? root.composeOptions : []
+
+                                        Rectangle {
+                                            id: whenChip
+
+                                            required property var modelData
+                                            required property int index
+                                            readonly property bool picked: root.composeWhen === index
+
+                                            width: whenRow.implicitWidth + 14
+                                            height: 22
+                                            radius: 7
+                                            color: whenChip.picked ? Qt.rgba(root.reminderColor.r, root.reminderColor.g, root.reminderColor.b, 0.18) : (whenHover.hovered ? "#161616" : "#0d0d0d")
+                                            border.width: 1
+                                            border.color: whenChip.picked ? Qt.rgba(root.reminderColor.r, root.reminderColor.g, root.reminderColor.b, 0.6) : "#222222"
+                                            scale: whenChip.picked ? 1 : 0.97
+
+                                            Behavior on color { ColorAnimation { duration: 140 } }
+                                            Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack; easing.overshoot: 2.4 } }
+
+                                            HoverHandler {
+                                                id: whenHover
+
+                                                cursorShape: Qt.PointingHandCursor
+                                            }
+
+                                            TapHandler {
+                                                onTapped: {
+                                                    root.composeWhen = whenChip.index;
+                                                    reminderInput.forceActiveFocus();
+                                                }
+                                            }
+
+                                            Row {
+                                                id: whenRow
+
+                                                anchors.centerIn: parent
+                                                spacing: 4
+
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: whenChip.modelData.label
+                                                    color: whenChip.picked ? root.reminderColor : "#9a9a9a"
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: 10
+                                                    font.weight: Font.Bold
+                                                }
+
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: root.composeTarget && whenChip.modelData.at > 0 ? root.reminderWhen(whenChip.modelData.at, root.composeTarget.date).replace("előtte ", "") : "nem csörög"
+                                                    color: whenChip.picked ? Qt.rgba(root.reminderColor.r, root.reminderColor.g, root.reminderColor.b, 0.75) : "#5a5a5a"
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: 10
+                                                    font.features: { "tnum": 1 }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: root.composeTarget !== null && root.composeTarget.nextWeek
+                                        text: "jövő hét"
+                                        color: root.faintText
+                                        font.family: root.fontFamily
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                    }
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: row.composing && root.composeOptions.length === 1
+                                        text: "csak feladatként — már nem lehet előtte szólni"
+                                        color: root.faintText
+                                        font.family: root.fontFamily
+                                        font.pixelSize: 10
+                                        font.weight: Font.Bold
                                     }
                                 }
                             }
@@ -1478,7 +1959,9 @@ Item {
                             readonly property color tint: root.subjectColor(lesson.subject)
                             readonly property bool live: modelData.day === root.todayIndex && root.status.kind === "class" && root.status.lesson === lesson
                             readonly property bool hasNote: lesson.note !== ""
-                            readonly property bool hasTask: root.tasksForLesson(lesson, modelData.day).length > 0
+                            readonly property var homework: (root.weekHomework[modelData.day] || { byLesson: [] }).byLesson[modelData.index] || []
+                            readonly property bool hasTask: homework.some(h => h.kind === "task")
+                            readonly property bool hasReminder: homework.some(h => h.kind === "reminder")
                             readonly property bool picked: modelData.day === root.selectedDay && modelData.index === root.selectedLesson
 
                             x: weekGrid.labelWidth + modelData.day * weekGrid.colW + 2
@@ -1547,6 +2030,14 @@ Item {
                                     radius: 2.5
                                     color: root.taskColor
                                 }
+
+                                Rectangle {
+                                    visible: cell.hasReminder
+                                    width: 5
+                                    height: 5
+                                    radius: 2.5
+                                    color: root.reminderColor
+                                }
                             }
 
                             MouseArea {
@@ -1567,43 +2058,72 @@ Item {
                 }
             }
 
-            // Tasks due on the selected day
-            Row {
+            // Homework on the selected day
+            Flickable {
+                id: dueLine
+
+                readonly property var due: root.itemsOfDay(root.selectedDay)
+
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.tasksHeight
-                spacing: 8
                 clip: true
+                contentWidth: dueRow.implicitWidth
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.HorizontalFlick
 
-                readonly property var due: root.tasksDue(root.selectedDay)
+                Row {
+                    id: dueRow
 
-                MIcon {
-                    anchors.verticalCenter: parent.verticalCenter
-                    name: parent.due.length > 0 ? "assignment_late" : "assignment_turned_in"
-                    size: 13
-                    color: parent.due.length > 0 ? root.taskColor : root.faintText
-                }
+                    height: dueLine.height
+                    spacing: 8
 
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: parent.due.length > 0 ? root.dayLong[root.selectedDay] + ":" : "Nincs határidős feladat " + root.dayTo[root.selectedDay]
-                    color: parent.due.length > 0 ? root.taskColor : root.faintText
-                    font.family: root.fontFamily
-                    font.pixelSize: 10
-                    font.weight: Font.Black
-                }
-
-                Repeater {
-                    model: parent.due
+                    MIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        name: dueLine.due.length > 0 ? "assignment_late" : "assignment_turned_in"
+                        size: 13
+                        color: dueLine.due.length > 0 ? root.taskColor : root.faintText
+                    }
 
                     Text {
-                        required property var modelData
-
                         anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.text + (modelData.priority > 0 ? " " + "!".repeat(modelData.priority) : "")
-                        color: root.primaryText
+                        text: dueLine.due.length > 0 ? root.dayLong[root.selectedDay] + ":" : "Nincs házi vagy emlékeztető " + root.dayTo[root.selectedDay]
+                        color: dueLine.due.length > 0 ? root.taskColor : root.faintText
                         font.family: root.fontFamily
                         font.pixelSize: 10
-                        font.weight: Font.DemiBold
+                        font.weight: Font.Black
+                    }
+
+                    Repeater {
+                        model: dueLine.due
+
+                        Row {
+                            id: dueItem
+
+                            required property var modelData
+                            readonly property bool isTask: modelData.kind === "task"
+
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 3
+
+                            MIcon {
+                                anchors.verticalCenter: parent.verticalCenter
+                                name: dueItem.isTask ? "assignment" : "notifications"
+                                size: 11
+                                color: dueItem.isTask ? root.taskColor : root.reminderColor
+                            }
+
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: dueItem.modelData.text
+                                color: root.primaryText
+                                font.family: root.fontFamily
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
+
+                                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: root.openReminderRequested(dueItem.modelData.id) }
+                            }
+                        }
                     }
                 }
             }
@@ -1613,7 +2133,7 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.hintHeight
                 horizontalAlignment: Text.AlignHCenter
-                text: root.toast !== "" ? root.toast : (root.weekView ? "←→ day  ·  ↑↓ lesson  ·  Enter or click opens it  ·  W day view  ·  E edit" : "←→ / 1–5 day  ·  ↑↓ lesson  ·  Enter note  ·  W week  ·  T today  ·  E edit")
+                text: root.toast !== "" ? root.toast : (root.weekView ? "←→ day  ·  ↑↓ lesson  ·  Enter or click opens it  ·  W day view  ·  E edit" : "←→ / 1–5 day  ·  ↑↓ lesson  ·  Enter note  ·  R reminder  ·  W week  ·  T today  ·  E edit")
                 color: root.toast !== "" ? root.accentColor : root.faintText
                 elide: Text.ElideRight
                 font.family: root.fontFamily

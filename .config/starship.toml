@@ -33,17 +33,17 @@ $line_break$character"""
 palette = 'theme'
 
 [palettes.theme]
-color_fg0 = '#fce8c3'
-color_fg1 = '#121110'
-color_bg1 = '#302d28'
-color_bg3 = '#48443b'
-color_blue = '#2c78bf'
-color_aqua = '#0aaeb3'
-color_green = '#519f50'
-color_orange = '#ff5f00'
-color_purple = '#e02c6d'
-color_red = '#ef2f27'
-color_yellow = '#fbb829'
+color_fg0 = '#d4d4d4'
+color_fg1 = '#020202'
+color_bg1 = '#171717'
+color_bg3 = '#2e2e2e'
+color_blue = '#7f7f7f'
+color_aqua = '#b5b5b5'
+color_green = '#9a9a9a'
+color_orange = '#d6d6d6'
+color_purple = '#c8c8c8'
+color_red = '#8c8c8c'
+color_yellow = '#a8a8a8'
 
 [os]
 disabled = false

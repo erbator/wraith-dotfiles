@@ -3,7 +3,9 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 
-// Reminders, typed the way you'd say them:
+// Reminders and to-dos in one list, typed the way you'd say them.
+// Without a time it's a task to tick off ("szerda nyelvtan", "buy milk");
+// with one it rings ("szerda 10:10 dolgozat", "call mom in 20 min").
 //   "call mom in 20 min"   "dentist tomorrow 14:30"   "pay rent 10.01 9am"
 //   "stretch every 2h"     "standup every weekday 9:30"   "holnap 8:00 bevásárlás"
 // The line under the input shows exactly when it will fire before you press
@@ -11,6 +13,9 @@ import Quickshell.Io
 // for a reminder typed with only a time). Repeating reminders reschedule
 // themselves when they fire; fired ones stay under "Earlier" for a day so
 // they can be snoozed.
+// Tied to the timetable: "matek házi óra előtt" rings 10 minutes before the
+// next Matematika ("órán" / "at class": as it starts), and reminders set
+// from a lesson in Órarend carry a chip that opens that lesson.
 Item {
     id: root
 
@@ -21,6 +26,14 @@ Item {
     // Fired the moment a reminder is due; the shell shows it as an
     // AlertBanner (+ sound) and routes its buttons to handleAlertAction().
     signal alertRequested(var alert)
+    // Show a reminder's lesson in Órarend (wired in IslandContent).
+    signal openLessonRequested(var lesson)
+
+    // The Órarend panel, for "óra előtt" phrases (nextLessonFor()).
+    property var timetable: null
+    property string pendingFocusId: ""
+    readonly property color lessonColor: "#c084fc"
+    readonly property var lessonDays: ["H", "K", "Sze", "Cs", "P"]
 
     readonly property color primaryText: "#f7f7f7"
     readonly property color secondaryText: "#777777"
@@ -44,7 +57,9 @@ Item {
     readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
 
     property real now: Date.now()
-    property var reminders: [] // { id, text, fireAt, repeat: null | { kind, ms? } }
+    // { id, text, fireAt: ms | null (a task), due: day ms | null (tasks),
+    //   repeat: null | { kind, ms? }, lesson?: { date, day, p, subject, start } }
+    property var reminders: []
     property var recent: [] // fired: { id, text, firedAt }
     property bool loaded: false
     property int idCounter: 0
@@ -76,6 +91,21 @@ Item {
         const date = new Date(ms);
         date.setDate(date.getDate() + days);
         return date.getTime();
+    }
+
+    function isTimed(r) {
+        return typeof r.fireAt === "number";
+    }
+
+    // The day an item belongs to: when it rings, or when a task is due
+    // (null: a task for any time).
+    function dayOf(r) {
+        return root.isTimed(r) ? root.startOfDay(r.fireAt) : (typeof r.due === "number" ? r.due : null);
+    }
+
+    // Tasks sit at the top of their day, undated ones at the very end.
+    function sortKey(r) {
+        return root.isTimed(r) ? r.fireAt : (typeof r.due === "number" ? r.due : 8.64e15);
     }
 
     function hhmm(ms) {
@@ -171,7 +201,36 @@ Item {
     // are blanked in both copies so indices stay aligned.
     readonly property string wordChars: "a-z0-9áéíóöőúüű"
 
+    function lessonLabel(lesson) {
+        if (!lesson)
+            return "";
+        const name = String(lesson.subject).replace(/\s+\d+.*$/, "").replace(/\s+I+\.?$/, "");
+        const period = lesson.p[0] === lesson.p[1] ? lesson.p[0] + ". óra" : lesson.p[0] + "–" + lesson.p[1] + ". óra";
+        return name + "  ·  " + (root.lessonDays[lesson.day] || "") + " " + new Date(lesson.date).getDate() + ".  " + period;
+    }
+
+    // "matek házi óra előtt", "angol szótár órára", "töri doga órán",
+    // "physics before class": ring for the next lesson of that subject.
+    function parseClassPhrase(raw) {
+        const m = /(^|\s)(óra\s+előtt|ora\s+elott|órára|orara|óra\s+elején|órán|oran|before\s+class|for\s+class|next\s+class|at\s+class)(?=$|[\s,.!?])/i.exec(raw);
+        if (!m || !root.timetable)
+            return null;
+        const rest = (raw.slice(0, m.index) + " " + raw.slice(m.index + m[0].length)).replace(/\s+/g, " ").trim();
+        const lesson = root.timetable.nextLessonFor(rest);
+        if (!lesson)
+            return { ok: false, hasWhen: true, text: rest, error: "Which class? — name the subject: matek óra előtt" };
+        const atStart = /órán|oran|elején|at\s+class/i.test(m[2]);
+        let fireAt = atStart ? lesson.start : lesson.start - 10 * 60000;
+        if (fireAt <= root.now)
+            fireAt = lesson.start;
+        let text = rest.charAt(0).toUpperCase() + rest.slice(1);
+        return { ok: true, text: text !== "" ? text : lesson.subject, fireAt: fireAt, repeat: null, hasWhen: true, lesson: lesson };
+    }
+
     function parseDraft(raw, baseDay) {
+        const classResult = root.parseClassPhrase(raw);
+        if (classResult)
+            return classResult;
         const W = root.wordChars;
         const pre = "(?:^|[^" + W + "])";
         const post = "(?=$|[^" + W + "])";
@@ -208,7 +267,14 @@ Item {
         };
         const units = "(?:seconds?|secs?|s|mp|másodperc|minutes?|mins?|m|perc|hours?|hrs?|h|óra|ora|days?|d|nap|weeks?|w|hét)";
         const dayAlternation = "monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues|tue|wed|thurs|thur|thu|fri|sat|sun";
-        const dowOf = word => ["sun", "mon", "tue", "wed", "thu", "fri", "sat"].indexOf(word.slice(0, 3));
+        const huDays = "hétfő[a-záéíóöőúüű]*|kedd[a-záéíóöőúüű]*|szerd[a-záéíóöőúüű]*|csütörtök[a-záéíóöőúüű]*|péntek[a-záéíóöőúüű]*|szombat[a-záéíóöőúüű]*|vasárnap[a-záéíóöőúüű]*";
+        const dowOf = word => {
+            const hu = [["vasár", 0], ["hétf", 1], ["kedd", 2], ["szerd", 3], ["csüt", 4], ["pént", 5], ["szomb", 6]];
+            for (const [stem, dow] of hu)
+                if (word.startsWith(stem))
+                    return dow;
+            return ["sun", "mon", "tue", "wed", "thu", "fri", "sat"].indexOf(word.slice(0, 3));
+        };
 
         // Repeats
         let m = take("every\\s+(\\d+)\\s*(minutes?|mins?|m|hours?|hrs?|h)");
@@ -216,7 +282,8 @@ Item {
             found.repeat = { kind: "interval", ms: Math.max(60000, parseInt(m[1], 10) * unitMs(m[2])) };
         } else if ((m = take("every\\s+(?:weekday|weekdays|workday|workdays)|hétköznap"))) {
             found.repeat = { kind: "weekday" };
-        } else if ((m = take("every\\s+(" + dayAlternation + ")"))) {
+        } else if ((m = take("every\\s+(" + dayAlternation + ")|minden\\s+(" + huDays + ")"))) {
+            m[1] = m[1] || m[2];
             found.repeat = { kind: "week", dow: dowOf(m[1]) };
             found.dow = found.repeat.dow;
         } else if ((m = take("every\\s+day|everyday|daily|naponta|minden\\s+nap"))) {
@@ -277,13 +344,16 @@ Item {
         if (found.dayOffset === undefined) {
             if ((m = take("day\\s+after\\s+tomorrow|holnapután")))
                 found.dayOffset = 2;
-            else if ((m = take("tomorrow|tmrw|tmr|holnap")))
+            else if ((m = take("tomorrow|tmrw|tmr|holnap(?:ra|ig)?")))
                 found.dayOffset = 1;
-            else if ((m = take("today|ma")))
+            else if ((m = take("today|ma|mára")))
                 found.dayOffset = 0;
-            else if (found.dow === undefined && (m = take("(next\\s+|on\\s+)?(" + dayAlternation + ")"))) {
+            else if (found.dow === undefined && (m = take("(next\\s+|on\\s+|jövő\\s+)?(" + dayAlternation + "|" + huDays + ")"))) {
                 found.dow = dowOf(m[2]);
                 found.nextWeek = !!m[1] && m[1].trim() === "next";
+                // "jövő szerda": that day of next week, even when this
+                // week's is still ahead.
+                found.jovo = !!m[1] && m[1].trim() === "jövő";
             }
             else if ((m = take("(\\d{4})[.\\-/](\\d{1,2})[.\\-/](\\d{1,2})\\.?")))
                 found.date = { y: parseInt(m[1], 10), mo: parseInt(m[2], 10) - 1, d: parseInt(m[3], 10) };
@@ -304,12 +374,48 @@ Item {
         if (text !== "")
             text = text.charAt(0).toUpperCase() + text.slice(1);
 
-        const hasWhen = found.relative !== undefined || found.time !== undefined || found.dayOffset !== undefined || found.dow !== undefined || found.date !== undefined || found.repeat !== undefined;
-        // No time at all is fine once a day is picked in the strip (9:00).
-        if (!hasWhen && baseDay === null)
-            return { ok: false, text: text, hasWhen: false, error: "When? — in 10m, at 17:30, tomorrow 9am" };
-
         const nowDate = new Date(root.now);
+
+        // No time: a task. It gets the day given (or the one picked in the
+        // strip), and the lesson it's for when the timetable knows one:
+        // "szerda nyelvtan" → Wednesday's Magyar; "nyelvtan" → the next one.
+        if (found.relative === undefined && found.time === undefined && !found.repeat) {
+            let day = null;
+            if (found.date) {
+                const year = found.date.y !== undefined ? found.date.y : nowDate.getFullYear();
+                if (found.date.mo < 0 || found.date.mo > 11 || found.date.d < 1 || found.date.d > 31)
+                    return { ok: false, error: "That date doesn't exist" };
+                day = new Date(year, found.date.mo, found.date.d).getTime();
+                if (found.date.y === undefined && day < root.startOfDay(root.now))
+                    day = new Date(year + 1, found.date.mo, found.date.d).getTime();
+            } else if (found.dayOffset !== undefined) {
+                day = root.startOfDay(root.addDays(root.startOfDay(root.now), found.dayOffset));
+            } else if (found.dow !== undefined) {
+                let diff = (found.dow - nowDate.getDay() + 7) % 7;
+                if (found.nextWeek && diff === 0)
+                    diff = 7;
+                if (found.jovo && diff < 7 - (nowDate.getDay() + 6) % 7)
+                    diff += 7;
+                day = root.startOfDay(root.addDays(root.startOfDay(root.now), diff));
+            } else if (baseDay !== null) {
+                day = baseDay;
+            }
+            if (day !== null && day < root.startOfDay(root.now))
+                return { ok: false, error: "That day has passed" };
+            let lesson = null;
+            if (root.timetable && text !== "") {
+                if (day !== null) {
+                    lesson = root.timetable.lessonOnDate(text, day);
+                } else {
+                    lesson = root.timetable.nextLessonFor(text);
+                    if (lesson)
+                        day = lesson.date;
+                }
+            }
+            if (text === "")
+                return { ok: false, error: "What's it about?" };
+            return { ok: true, text: text, fireAt: null, due: day, repeat: null, hasWhen: true, lesson: lesson };
+        }
         let fireAt;
         let dateGiven = true;
 
@@ -332,6 +438,8 @@ Item {
                 let diff = (found.dow - nowDate.getDay() + 7) % 7;
                 if (found.nextWeek && diff === 0)
                     diff = 7;
+                if (found.jovo && diff < 7 - (nowDate.getDay() + 6) % 7)
+                    diff += 7;
                 day = root.addDays(root.startOfDay(root.now), diff);
             } else {
                 dateGiven = false;
@@ -369,7 +477,13 @@ Item {
         if (fireAt <= root.now)
             return { ok: false, error: "That's already in the past" };
 
-        return { ok: true, text: text !== "" ? text : "Reminder", fireAt: fireAt, repeat: found.repeat || null, hasWhen: true };
+        // A time a lesson starts at, or a subject that day, ties it to the
+        // lesson: "szerda 10:10 dolgozat" → Wednesday's 10:10 class.
+        let lesson = null;
+        if (root.timetable && !found.repeat)
+            lesson = (text !== "" ? root.timetable.lessonOnDate(text, root.startOfDay(fireAt)) : null) || root.timetable.lessonAt(fireAt);
+
+        return { ok: true, text: text !== "" ? text : (lesson ? lesson.subject : "Reminder"), fireAt: fireAt, repeat: found.repeat || null, hasWhen: true, lesson: lesson };
     }
 
     function monthIndex(word) {
@@ -381,6 +495,17 @@ Item {
     // Turns a saved reminder back into a phrase the parser reads the same way,
     // for editing.
     function phraseFor(reminder) {
+        if (!root.isTimed(reminder)) {
+            if (typeof reminder.due !== "number")
+                return reminder.text;
+            const today = root.startOfDay(root.now);
+            if (reminder.due === today)
+                return reminder.text + " today";
+            if (reminder.due === root.startOfDay(root.addDays(today, 1)))
+                return reminder.text + " tomorrow";
+            const d = new Date(reminder.due);
+            return reminder.text + " " + d.getFullYear() + "." + root.pad2(d.getMonth() + 1) + "." + root.pad2(d.getDate());
+        }
         const day = root.startOfDay(reminder.fireAt);
         const today = root.startOfDay(root.now);
         const date = new Date(reminder.fireAt);
@@ -408,17 +533,18 @@ Item {
     readonly property bool canAdd: root.parsed !== null && root.parsed.ok === true
 
     // ── List ──────────────────────────────────────────────────────────────
-    readonly property var upcoming: root.reminders.slice().sort((a, b) => a.fireAt - b.fireAt)
-    readonly property var nextReminder: root.upcoming.length > 0 ? root.upcoming[0] : null
+    readonly property var upcoming: root.reminders.slice().sort((a, b) => root.sortKey(a) - root.sortKey(b))
+    readonly property var nextReminder: root.upcoming.find(r => root.isTimed(r)) || null
+    readonly property int openTasks: root.reminders.filter(r => !root.isTimed(r)).length
 
     readonly property var rows: {
         const rows = [];
-        const list = root.filterDay === null ? root.upcoming : root.upcoming.filter(r => root.startOfDay(r.fireAt) === root.filterDay);
-        let lastDay = null;
+        const list = root.filterDay === null ? root.upcoming : root.upcoming.filter(r => root.dayOf(r) === root.filterDay);
+        let lastDay;
         for (const reminder of list) {
-            const day = root.startOfDay(reminder.fireAt);
+            const day = root.dayOf(reminder);
             if (day !== lastDay && root.filterDay === null) {
-                rows.push({ kind: "header", label: root.dayLabel(day), key: "h" + day });
+                rows.push({ kind: "header", label: day === null ? "Anytime" : root.dayLabel(day), key: "h" + day });
                 lastDay = day;
             }
             rows.push({ kind: "item", key: reminder.id, reminder: reminder });
@@ -472,9 +598,16 @@ Item {
         if (root.editingId !== "")
             others = others.filter(r => r.id !== root.editingId);
 
-        const entry = { id: root.nextId(), text: result.text, fireAt: result.fireAt, repeat: result.repeat, created: root.now };
+        const old = root.editingId !== "" ? root.reminders.find(r => r.id === root.editingId) : null;
+        const entry = { id: root.nextId(), text: result.text, fireAt: result.fireAt, due: result.fireAt === null ? result.due : null, repeat: result.repeat, created: root.now };
+        const lesson = result.lesson || (old && old.lesson && !result.repeat ? old.lesson : null);
+        if (lesson)
+            entry.lesson = lesson;
         root.reminders = others.concat([entry]);
-        root.showToast((root.editingId !== "" ? "Updated · " : "Set · ") + root.dayLabel(root.startOfDay(entry.fireAt)) + " " + root.hhmm(entry.fireAt) + "  (" + root.relative(entry.fireAt) + ")");
+        if (entry.fireAt === null)
+            root.showToast((root.editingId !== "" ? "Updated · " : "Added · ") + (entry.due !== null ? root.dayLabel(entry.due) : "anytime") + (lesson ? "  ·  " + root.lessonLabel(lesson) : ""));
+        else
+            root.showToast((root.editingId !== "" ? "Updated · " : "Set · ") + root.dayLabel(root.startOfDay(entry.fireAt)) + " " + root.hhmm(entry.fireAt) + "  (" + root.relative(entry.fireAt) + ")");
         root.editingId = "";
         ring.restart();
         root.selectedId = entry.id;
@@ -500,13 +633,31 @@ Item {
         input.forceActiveFocus();
     }
 
-    // From the To-do panel's "remind me": start a reminder with its text.
-    function prefill(text) {
-        root.editingId = "";
+    // From Órarend: a reminder for one lesson.
+    function addLinked(text, fireAt, lesson) {
+        root.now = Date.now();
+        const entry = { id: root.nextId(), text: text, fireAt: fireAt < 0 ? null : fireAt, due: fireAt < 0 ? lesson.date : null, repeat: null, created: root.now, lesson: lesson };
+        root.reminders = root.reminders.concat([entry]);
+        root.save();
+        return entry.id;
+    }
+
+    // From Órarend: open with this reminder picked.
+    function focusReminder(id) {
+        root.pendingFocusId = id;
+        if (root.visible)
+            root.applyPendingFocus();
+    }
+
+    function applyPendingFocus() {
+        const id = root.pendingFocusId;
+        root.pendingFocusId = "";
+        if (id === "" || !root.reminders.some(r => r.id === id))
+            return;
         root.filterDay = null;
-        input.text = text;
-        root.draft = text;
-        input.cursorPosition = text.length;
+        root.selectedId = id;
+        root.flashId = id;
+        flashTimer.restart();
     }
 
     function cancelEdit() {
@@ -538,6 +689,20 @@ Item {
         root.save();
     }
 
+    // Tick off: it moves to Earlier (struck through) for a day.
+    function complete(key) {
+        const row = root.rowFor(key);
+        if (!row || row.kind !== "item")
+            return;
+        const r = row.reminder;
+        root.reminders = root.reminders.filter(x => x.id !== r.id);
+        root.recent = [{ id: r.id + "-done", text: r.text, firedAt: root.now, done: true }].concat(root.recent).slice(0, 8);
+        if (root.editingId === r.id)
+            root.cancelEdit();
+        root.showToast("Done · " + r.text);
+        root.save();
+    }
+
     function snooze(key, minutes) {
         const row = root.rowFor(key);
         if (!row)
@@ -562,11 +727,11 @@ Item {
     }
 
     function checkDue() {
-        const due = root.reminders.filter(r => r.fireAt <= root.now);
+        const due = root.reminders.filter(r => root.isTimed(r) && r.fireAt <= root.now);
         if (due.length === 0)
             return;
 
-        let kept = root.reminders.filter(r => r.fireAt > root.now);
+        let kept = root.reminders.filter(r => !root.isTimed(r) || r.fireAt > root.now);
         let recent = root.recent.slice();
 
         for (const reminder of due) {
@@ -578,6 +743,8 @@ Item {
                 const next = root.nextOccurrence(reminder.fireAt, reminder.repeat);
                 kept.push(Object.assign({}, reminder, { fireAt: next }));
                 body = "Repeats " + root.repeatLabel(reminder.repeat) + "  ·  next " + root.dayLabel(root.startOfDay(next)).toLowerCase() + " " + root.hhmm(next);
+            } else if (reminder.lesson) {
+                body = root.lessonLabel(reminder.lesson) + "  ·  " + root.hhmm(reminder.lesson.start);
             } else if (reminder.created) {
                 const setDay = root.startOfDay(reminder.created) === root.startOfDay(root.now) ? "today" : root.dayLabel(root.startOfDay(reminder.created)).toLowerCase();
                 body = "You set this " + setDay + " at " + root.hhmm(reminder.created);
@@ -585,7 +752,7 @@ Item {
             const recentId = reminder.id + "-" + reminder.fireAt;
             recent.unshift({ id: recentId, text: reminder.text, firedAt: reminder.fireAt });
             if (!stale) {
-                const upcoming = kept.filter(r => r.fireAt > root.now).sort((a, b) => a.fireAt - b.fireAt);
+                const upcoming = kept.filter(r => root.isTimed(r) && r.fireAt > root.now).sort((a, b) => a.fireAt - b.fireAt);
                 root.alertRequested({
                     source: "reminder",
                     kind: "reminder",
@@ -631,6 +798,11 @@ Item {
     }
 
     // ── Persistence ───────────────────────────────────────────────────────
+    // The pre-2026 per-shell file, read only when the real one is missing.
+    // A FileView loads as soon as it has a path, so the path stays empty
+    // until then: set up front, the old file loaded on every start and was
+    // applied over (and, for some panels, saved over) the real data.
+    property bool legacyWanted: false
     readonly property string storePath: Quickshell.env("HOME") + "/.local/share/dynamic-glacier/reminders.json"
 
     function save() {
@@ -639,15 +811,18 @@ Item {
     }
 
     function apply(text) {
+        root.lastSaved = text;
         try {
             const data = JSON.parse(text);
             const list = Array.isArray(data) ? data : (data && Array.isArray(data.reminders) ? data.reminders : []);
-            root.reminders = list.filter(r => r && typeof r.text === "string" && typeof r.fireAt === "number").map(r => ({
+            root.reminders = list.filter(r => r && typeof r.text === "string" && (typeof r.fireAt === "number" || r.fireAt === null)).map(r => ({
                 id: String(r.id !== undefined ? r.id : root.nextId()),
                 text: r.text,
                 fireAt: r.fireAt,
+                due: r.fireAt === null && typeof r.due === "number" ? r.due : null,
                 repeat: r.repeat && typeof r.repeat.kind === "string" ? r.repeat : null,
-                created: typeof r.created === "number" ? r.created : 0
+                created: typeof r.created === "number" ? r.created : 0,
+                lesson: r.lesson && typeof r.lesson.subject === "string" && Array.isArray(r.lesson.p) && typeof r.lesson.date === "number" ? r.lesson : undefined
             }));
             root.recent = data && Array.isArray(data.recent) ? data.recent.filter(r => r && typeof r.text === "string" && typeof r.firedAt === "number") : [];
         } catch (error) {
@@ -668,13 +843,23 @@ Item {
         printErrors: false
         onLoaded: root.apply(storeFile.text())
         // First run on the new location: pick up the old per-shell state file.
-        onLoadFailed: legacyFile.reload()
+        onLoadFailed: root.legacyWanted = true
+    }
+
+    property string lastSaved: ""
+
+    FileView {
+        id: backupFile
+
+        path: root.storePath + ".bak"
+        atomicWrites: true
+        printErrors: false
     }
 
     FileView {
         id: legacyFile
 
-        path: Quickshell.statePath("reminders.json")
+        path: root.legacyWanted ? Quickshell.statePath("reminders.json") : ""
         printErrors: false
         onLoaded: root.apply(legacyFile.text())
         onLoadFailed: root.apply("")
@@ -684,7 +869,15 @@ Item {
         id: saveTimer
 
         interval: 300
-        onTriggered: storeFile.setText(JSON.stringify({ reminders: root.reminders, recent: root.recent }, null, 2) + "\n")
+        onTriggered: {
+            const text = JSON.stringify({ reminders: root.reminders, recent: root.recent }, null, 2) + "\n";
+            // The version being replaced goes to reminders.json.bak first,
+            // so one bad write can always be undone by hand.
+            if (root.lastSaved !== "" && root.lastSaved !== text)
+                backupFile.setText(root.lastSaved);
+            storeFile.setText(text);
+            root.lastSaved = text;
+        }
     }
 
     Timer {
@@ -697,7 +890,7 @@ Item {
         onTriggered: {
             const time = Date.now();
             const minute = new Date(time).getSeconds() === 0;
-            if (root.visible || minute || root.reminders.some(r => r.fireAt <= time)) {
+            if (root.visible || minute || root.reminders.some(r => root.isTimed(r) && r.fireAt <= time)) {
                 root.now = time;
                 root.checkDue();
                 if (minute)
@@ -772,6 +965,8 @@ Item {
             root.typedEarly = "";
             root.forceActiveFocus();
             focusAfterOpen.restart();
+            if (root.pendingFocusId !== "")
+                root.applyPendingFocus();
         }
     }
 
@@ -906,7 +1101,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.nextReminder ? "Next  ·  " + root.nextReminder.text + "  " + root.relative(root.nextReminder.fireAt) : "Nothing scheduled"
+                    text: (root.openTasks > 0 ? root.openTasks + (root.openTasks === 1 ? " task" : " tasks") + "  ·  " : "") + (root.nextReminder ? "Next  ·  " + root.nextReminder.text + "  " + root.relative(root.nextReminder.fireAt) : "Nothing scheduled")
                     color: root.nextReminder && root.nextReminder.fireAt - root.now < 15 * 60000 ? root.soonColor : root.secondaryText
                     elide: Text.ElideRight
                     font.family: root.fontFamily
@@ -1000,8 +1195,18 @@ Item {
                 font.pixelSize: 13
                 onTextEdited: root.draft = text
 
-                Keys.onReturnPressed: root.commit()
-                Keys.onEnterPressed: root.commit()
+                Keys.onReturnPressed: event => {
+                    if (input.text.trim() === "" || (event.modifiers & Qt.ControlModifier))
+                        root.complete(root.currentKey);
+                    else
+                        root.commit();
+                }
+                Keys.onEnterPressed: event => {
+                    if (input.text.trim() === "" || (event.modifiers & Qt.ControlModifier))
+                        root.complete(root.currentKey);
+                    else
+                        root.commit();
+                }
                 Keys.onUpPressed: root.moveSelection(-1)
                 Keys.onDownPressed: root.moveSelection(1)
                 Keys.onEscapePressed: {
@@ -1046,7 +1251,7 @@ Item {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: input.text === ""
-                    text: root.filterDay !== null ? "Remind me " + (root.filterDay <= root.addDays(root.startOfDay(root.now), 1) ? root.dayLabel(root.filterDay).toLowerCase() : "on " + root.dayLabel(root.filterDay)) + " at…" : "Call mom in 20 min  ·  dentist tomorrow 14:30"
+                    text: root.filterDay !== null ? (root.filterDay <= root.addDays(root.startOfDay(root.now), 1) ? root.dayLabel(root.filterDay) : "On " + root.dayLabel(root.filterDay)) + ": a task, or add a time to ring" : "szerda nyelvtan  ·  szerda 10:10 dolgozat  ·  call mom in 20 min"
                     color: "#555555"
                     font: input.font
                     elide: Text.ElideRight
@@ -1109,7 +1314,7 @@ Item {
 
                 MIcon {
                     anchors.verticalCenter: parent.verticalCenter
-                    name: root.parsed && root.parsed.ok ? (root.parsed.repeat ? "repeat" : "schedule") : "error"
+                    name: root.parsed && root.parsed.ok ? (root.parsed.fireAt === null ? "task_alt" : (root.parsed.repeat ? "repeat" : "schedule")) : "error"
                     size: 14
                     color: root.parsed && root.parsed.ok ? root.accentColor : root.errorColor
                 }
@@ -1122,6 +1327,8 @@ Item {
                             return "";
                         if (!p.ok)
                             return p.error || "";
+                        if (p.fireAt === null)
+                            return (p.due !== null ? root.dayLabel(p.due) : "Anytime") + "  ·  task";
                         return root.dayLabel(root.startOfDay(p.fireAt)) + "  ·  " + root.hhmm(p.fireAt);
                     }
                     color: root.parsed && root.parsed.ok ? root.primaryText : root.errorColor
@@ -1133,7 +1340,7 @@ Item {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
                     visible: root.parsed !== null && root.parsed.ok === true
-                    text: root.parsed && root.parsed.ok ? root.relative(root.parsed.fireAt) + (root.parsed.repeat ? "  ·  " + root.repeatLabel(root.parsed.repeat) : "") + "  ·  “" + root.parsed.text + "”" : ""
+                    text: root.parsed && root.parsed.ok ? (root.parsed.fireAt === null ? "no ring" : root.relative(root.parsed.fireAt)) + (root.parsed.repeat ? "  ·  " + root.repeatLabel(root.parsed.repeat) : "") + (root.parsed.lesson ? "  ·  " + root.lessonLabel(root.parsed.lesson) : "  ·  “" + root.parsed.text + "”") : ""
                     color: root.secondaryText
                     elide: Text.ElideRight
                     width: Math.min(implicitWidth, root.width - root.panelPadding * 2 - 180)
@@ -1185,7 +1392,7 @@ Item {
                     readonly property real dayMs: root.addDays(root.startOfDay(root.now), root.stripWeek * 7 + index)
                     readonly property bool isToday: dayMs === root.startOfDay(root.now)
                     readonly property bool selected: root.filterDay === dayMs
-                    readonly property int count: root.reminders.filter(r => root.startOfDay(r.fireAt) === dayMs).length
+                    readonly property int count: root.reminders.filter(r => root.dayOf(r) === dayMs).length
                     readonly property bool weekend: new Date(dayMs).getDay() % 6 === 0
 
                     Layout.fillWidth: true
@@ -1326,7 +1533,9 @@ Item {
                     readonly property var reminder: modelData.reminder || null
                     readonly property bool current: !isHeader && root.currentKey === modelData.key
                     readonly property bool leaving: root.removing[modelData.key] === true
-                    readonly property bool soon: !isHeader && !isRecent && reminder && reminder.fireAt - root.now < 15 * 60000
+                    readonly property bool isTask: !isHeader && !isRecent && reminder !== null && !root.isTimed(reminder)
+                    readonly property bool overdue: isTask && typeof reminder.due === "number" && reminder.due < root.startOfDay(root.now)
+                    readonly property bool soon: !isHeader && !isRecent && reminder && root.isTimed(reminder) && reminder.fireAt - root.now < 15 * 60000
                     readonly property bool editing: !isHeader && !isRecent && reminder && reminder.id === root.editingId
 
                     width: list.width
@@ -1397,9 +1606,58 @@ Item {
                         anchors.rightMargin: 6
                         spacing: 10
 
-                        Text {
+                        // Tasks: a box to tick off
+                        Item {
+                            visible: row.isTask
                             Layout.preferredWidth: 38
-                            text: row.reminder ? root.hhmm(row.isRecent ? row.reminder.firedAt : row.reminder.fireAt) : ""
+                            Layout.preferredHeight: 20
+
+                            Rectangle {
+                                id: tickBox
+
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: 8
+                                width: 18
+                                height: 18
+                                radius: 9
+                                color: tickHover.hovered ? Qt.rgba(root.accentColor.r, root.accentColor.g, root.accentColor.b, 0.15) : "transparent"
+                                border.width: 1.5
+                                border.color: tickHover.hovered ? root.accentColor : (row.overdue ? root.errorColor : "#4a4a4a")
+                                scale: tickMouse.pressed ? 0.8 : 1
+
+                                Behavior on color { ColorAnimation { duration: 140 } }
+                                Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutBack; easing.overshoot: 3 } }
+
+                                MIcon {
+                                    anchors.centerIn: parent
+                                    name: "check"
+                                    size: 13
+                                    color: root.accentColor
+                                    opacity: tickHover.hovered ? 0.8 : 0
+
+                                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                                }
+
+                                HoverHandler {
+                                    id: tickHover
+
+                                    cursorShape: Qt.PointingHandCursor
+                                }
+
+                                MouseArea {
+                                    id: tickMouse
+
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    onClicked: root.complete(row.modelData.key)
+                                }
+                            }
+                        }
+
+                        Text {
+                            visible: !row.isTask
+                            Layout.preferredWidth: 38
+                            text: row.reminder && !row.isTask ? root.hhmm(row.isRecent ? row.reminder.firedAt : row.reminder.fireAt) : ""
                             color: row.isRecent ? root.faintText : (row.soon ? root.soonColor : root.accentColor)
                             font.family: root.fontFamily
                             font.pixelSize: 12
@@ -1422,6 +1680,54 @@ Item {
                                 font.weight: Font.DemiBold
                             }
 
+                            // The lesson it's for: click to open it in Órarend.
+                            Rectangle {
+                                id: lessonChip
+
+                                visible: row.reminder !== null && !row.isRecent && row.reminder.lesson !== undefined && row.reminder.lesson !== null
+                                implicitWidth: lessonChipRow.implicitWidth + 10
+                                implicitHeight: 15
+                                radius: 5
+                                color: Qt.rgba(root.lessonColor.r, root.lessonColor.g, root.lessonColor.b, lessonHover.hovered ? 0.22 : 0.1)
+                                border.width: 1
+                                border.color: Qt.rgba(root.lessonColor.r, root.lessonColor.g, root.lessonColor.b, 0.35)
+
+                                Behavior on color { ColorAnimation { duration: 120 } }
+
+                                HoverHandler {
+                                    id: lessonHover
+
+                                    cursorShape: Qt.PointingHandCursor
+                                }
+
+                                TapHandler {
+                                    onTapped: root.openLessonRequested(row.reminder.lesson)
+                                }
+
+                                Row {
+                                    id: lessonChipRow
+
+                                    anchors.centerIn: parent
+                                    spacing: 3
+
+                                    MIcon {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        name: "school"
+                                        size: 10
+                                        color: root.lessonColor
+                                    }
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: lessonChip.visible ? root.lessonLabel(row.reminder.lesson) : ""
+                                        color: root.lessonColor
+                                        font.family: root.fontFamily
+                                        font.pixelSize: 9
+                                        font.weight: Font.Bold
+                                    }
+                                }
+                            }
+
                             Row {
                                 spacing: 4
                                 visible: row.reminder !== null && (row.isRecent || row.reminder.repeat)
@@ -1435,7 +1741,7 @@ Item {
 
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: row.reminder ? (row.isRecent ? "rang " + root.ago(row.reminder.firedAt) : root.repeatLabel(row.reminder.repeat)) : ""
+                                    text: row.reminder ? (row.isRecent ? (row.reminder.done ? "done " : "rang ") + root.ago(row.reminder.firedAt) : root.repeatLabel(row.reminder.repeat)) : ""
                                     color: root.faintText
                                     font.family: root.fontFamily
                                     font.pixelSize: 9
@@ -1446,8 +1752,8 @@ Item {
 
                         Text {
                             visible: !row.isRecent && !rowActions.shown
-                            text: row.reminder && !row.isRecent ? root.relative(row.reminder.fireAt) : ""
-                            color: row.soon ? root.soonColor : root.secondaryText
+                            text: row.reminder && !row.isRecent ? (row.isTask ? (row.overdue ? "late" : "") : root.relative(row.reminder.fireAt)) : ""
+                            color: row.overdue ? root.errorColor : (row.soon ? root.soonColor : root.secondaryText)
                             font.family: root.fontFamily
                             font.pixelSize: 10
                             font.weight: Font.DemiBold
@@ -1467,6 +1773,13 @@ Item {
                                 icon: "snooze"
                                 tint: root.soonColor
                                 onClicked: root.snooze(row.modelData.key, 10)
+                            }
+
+                            IconButton {
+                                visible: !row.isRecent && !row.isTask
+                                icon: "check"
+                                tint: root.accentColor
+                                onClicked: root.complete(row.modelData.key)
                             }
 
                             IconButton {
@@ -1508,7 +1821,7 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: root.hintHeight
             horizontalAlignment: Text.AlignHCenter
-            text: root.toast !== "" ? root.toast : (root.editingId !== "" ? "Editing  ·  Enter saves  ·  Esc cancels" : "Enter add  ·  ↑↓ select  ·  Ctrl+E edit  ·  Del remove  ·  ←→ day")
+            text: root.toast !== "" ? root.toast : (root.editingId !== "" ? "Editing  ·  Enter saves  ·  Esc cancels" : "Enter add  ·  empty Enter ticks off  ·  ↑↓ select  ·  Ctrl+E edit  ·  Del remove  ·  ←→ day")
             color: root.toast !== "" ? root.accentColor : (root.editingId !== "" ? root.soonColor : root.faintText)
             elide: Text.ElideRight
             font.family: root.fontFamily
