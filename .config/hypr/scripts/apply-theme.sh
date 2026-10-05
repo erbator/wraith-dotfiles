@@ -444,6 +444,12 @@ endif
 
 set background=dark
 silent! colorscheme $vim_theme
+
+" Let the terminal's own (translucent) background show through: colour
+" schemes paint a solid one, which kitty's background_opacity cannot fade.
+for group in ['Normal', 'NormalNC', 'SignColumn', 'LineNr', 'CursorLineNr', 'FoldColumn', 'EndOfBuffer']
+  execute 'highlight ' . group . ' guibg=NONE ctermbg=NONE'
+endfor
 EOF
     }
 
