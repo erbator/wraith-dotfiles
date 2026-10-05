@@ -74,8 +74,7 @@ files that already match are left alone, so re-running it is cheap.
 One tree does not live at its repo path and the installer handles that:
 `quickshell/dynamic-glacier/` goes to `~/.config/quickshell/dynamic-glacier/`.
 
-Left to do by hand afterwards: the hyprglass blur plugin (`hyprpm`),
-wallpapers in `~/Pictures/Wallpapers`, a picture of your choice at
+Left to do by hand afterwards: wallpapers in `~/Pictures/Wallpapers`, a picture of your choice at
 `~/.config/fastfetch/fetchimage.png` for `ff`, and
 `chsh -s "$(command -v fish)"`.
 

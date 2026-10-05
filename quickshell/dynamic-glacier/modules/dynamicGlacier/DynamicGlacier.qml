@@ -76,7 +76,7 @@ Scope {
     // through set-compositor.sh, which both applies them live and writes them
     // into a config file so they survive a reload. One object, so a new
     // control does not need a property threaded through every layer.
-    readonly property var compositorDefaults: ({ glass: true, opacity: 65, gaps: 6, rounding: 18, border: 0, blur: true, animations: true, dim: false })
+    readonly property var compositorDefaults: ({ opacity: 65, gaps: 6, rounding: 18, border: 0, blur: true, animations: true, dim: false })
     property var compositor: root.compositorDefaults
     // No gaps means windows own every pixel; the island then floats over
     // them instead of reserving a strip (see reservedZone).
@@ -680,7 +680,6 @@ Scope {
         };
 
         return {
-            glass: merged.glass === true,
             opacity: clamp(merged.opacity, 30, 100, 65),
             gaps: clamp(merged.gaps, 0, 24, 6),
             rounding: clamp(merged.rounding, 0, 24, 18),
@@ -704,7 +703,7 @@ Scope {
         // running=false first: a second change while the first is still in
         // flight would otherwise be a no-op property write.
         compositorProcess.running = false;
-        compositorProcess.command = [Quickshell.env("HOME") + "/.config/hypr/scripts/set-compositor.sh", "--glass", flag(c.glass), "--opacity", String(c.opacity), "--gaps", String(c.gaps), "--rounding", String(c.rounding), "--border", String(c.border), "--blur", flag(c.blur), "--animations", flag(c.animations), "--dim", flag(c.dim)];
+        compositorProcess.command = [Quickshell.env("HOME") + "/.config/hypr/scripts/set-compositor.sh", "--opacity", String(c.opacity), "--gaps", String(c.gaps), "--rounding", String(c.rounding), "--border", String(c.border), "--blur", flag(c.blur), "--animations", flag(c.animations), "--dim", flag(c.dim)];
         compositorProcess.running = true;
     }
 
@@ -1777,7 +1776,6 @@ Scope {
                 root.compositor = root.sanitizeCompositor(parsed.compositor);
             else
                 root.compositor = root.sanitizeCompositor({
-                    glass: parsed.windowGlassEnabled !== false,
                     opacity: parsed.windowOpacity,
                     gaps: parsed.edgeToEdge === true ? 0 : 6,
                     rounding: parsed.edgeToEdge === true ? 0 : 18,

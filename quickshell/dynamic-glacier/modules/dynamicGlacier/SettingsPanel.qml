@@ -69,7 +69,7 @@ Item {
     readonly property real panelProgress: Math.max(0, Math.min(1, (root.morph - 0.22) / 0.78))
 
     // ── Hyprland ──────────────────────────────────────────────────────────
-    readonly property var compositorDefaults: ({ glass: true, opacity: 65, gaps: 6, rounding: 18, border: 0, blur: true, animations: true, dim: false })
+    readonly property var compositorDefaults: ({ opacity: 65, gaps: 6, rounding: 18, border: 0, blur: true, animations: true, dim: false })
     readonly property var layoutPresets: [
         { label: "Floating", gaps: 6, rounding: 18, border: 0 },
         { label: "Tight", gaps: 3, rounding: 10, border: 1 },
@@ -1169,14 +1169,6 @@ Item {
                             columns: 2
                             columnSpacing: 0
                             rowSpacing: 0
-
-                            SwitchRow {
-                                label: "HyprGlass"
-                                icon: "blur_on"
-                                hintText: "HyprGlass plugin: refraction and blur on windows"
-                                checked: root.comp("glass", true)
-                                onToggled: root.setComp({ glass: !root.comp("glass", true) })
-                            }
 
                             SwitchRow {
                                 label: "Blur"

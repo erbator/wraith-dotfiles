@@ -11,5 +11,4 @@ hl.on("hyprland.start", function ()
     hl.exec_cmd(LAUNCH_PREFIX .. "wl-paste --type text --watch cliphist store")
     hl.exec_cmd(LAUNCH_PREFIX .. "wl-paste --type image --watch cliphist store")
     hl.exec_cmd(LAUNCH_PREFIX .. "quickshell -c dynamic-glacier")
-    hl.exec_cmd("hyprpm reload -n") -- one-shot, stays a plain exec
 end)

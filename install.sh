@@ -66,7 +66,7 @@ confirm() {
 # The session and everything the shell, keybinds and helper scripts call.
 CORE_PACKAGES=(
     # Compositor and session
-    hyprland hyprpm uwsm xdg-desktop-portal xdg-desktop-portal-gtk
+    hyprland uwsm xdg-desktop-portal xdg-desktop-portal-gtk
     qt6-wayland qt6-declarative polkit hyprlock
     # The Quickshell bar/island itself
     quickshell
@@ -386,8 +386,6 @@ if [ "$SHELL" != "$(command -v fish 2>/dev/null)" ] && command -v fish >/dev/nul
     note "fish is installed but is not your login shell: chsh -s \"\$(command -v fish)\""
 fi
 
-note "the hyprglass blur plugin is managed by hyprpm, not pacman:"
-note "  hyprpm add <hyprglass repo> && hyprpm enable hyprglass"
 note "drop some wallpapers into ~/Pictures/Wallpapers, then log into Hyprland"
 note "the island starts itself from .config/hypr/config/autostart.lua; to start it now:"
 note "  quickshell -c dynamic-glacier &"
