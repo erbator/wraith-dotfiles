@@ -73,21 +73,11 @@ files that already match are left alone, so re-running it is cheap.
 
 One tree does not live at its repo path and the installer handles that:
 `quickshell/dynamic-glacier/` goes to `~/.config/quickshell/dynamic-glacier/`.
-`extras/` is left alone, those have their own installers.
 
 Left to do by hand afterwards: the hyprglass blur plugin (`hyprpm`),
 wallpapers in `~/Pictures/Wallpapers`, a picture of your choice at
 `~/.config/fastfetch/fetchimage.png` for `ff`, and
 `chsh -s "$(command -v fish)"`.
-
-## Extras
-
-`extras/impasto-desktop/install.sh` adds only the desktop widgets from
-[impasto](https://github.com/andreumassanet/impasto) (clock, weather,
-calendar, media, stats… on the wallpaper, under the windows) as their own
-Quickshell config next to dynamic-glacier, and adds its own line to
-`autostart.lua`. Nothing else from impasto runs, and nothing of yours is
-touched. See `extras/impasto-desktop/README.md`.
 
 ## What's intentionally excluded
 
@@ -109,10 +99,7 @@ the GPL too.
 
 Parts that come from other projects keep their own terms:
 `quickshell/dynamic-glacier/` is built on [DynamicGlacier](https://github.com/mavxa/DynamicGlacier)
-(MIT, © mavxa — its notice is kept in `quickshell/dynamic-glacier/LICENSE`),
-and the widgets `extras/impasto-desktop/` installs are
-[impasto](https://github.com/andreumassanet/impasto)'s own code (GPL-3.0,
-fetched from upstream, not included here).
+(MIT, © mavxa — its notice is kept in `quickshell/dynamic-glacier/LICENSE`).
 
 ## Credits
 
@@ -120,8 +107,3 @@ Big thanks to [mavxa](https://github.com/mavxa) for
 [DynamicGlacier](https://github.com/mavxa/DynamicGlacier). The island started
 out as that project and I've been modding it ever since, so none of this
 would exist without it.
-
-And thanks to [Andreu Massanet](https://github.com/andreumassanet) for
-[impasto](https://github.com/andreumassanet/impasto). The desktop widgets come
-straight from there, I just run them next to my island. The whole setup is
-gorgeous, go check it out.

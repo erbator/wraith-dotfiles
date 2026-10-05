@@ -288,8 +288,8 @@ while IFS= read -r -d '' relative; do
         quickshell/dynamic-glacier/*)
             deploy_file "$REPO/$relative" "$HOME/.config/$relative"
             ;;
-        # Repo furniture, and the extras, which have their own installers.
-        extras/*|.github/*|*/.gitkeep) ;;
+        # Repo furniture.
+        .github/*|*/.gitkeep) ;;
         # Anything at the top level (README, this script, .gitignore).
         */*) deploy_file "$REPO/$relative" "$HOME/$relative" ;;
         *) ;;
